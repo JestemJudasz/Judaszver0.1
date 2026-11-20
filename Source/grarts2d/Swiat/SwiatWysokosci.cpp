@@ -317,14 +317,19 @@ namespace
 		return FMath::Lerp(FMath::Lerp(Px(C, R), Px(C + 1, R), Fu), FMath::Lerp(Px(C, R + 1), Px(C + 1, R + 1), Fu), Fv);
 	}
 
+	/** Oczko siatki wygladzania DEM w pikselach (piksel = 64 m w grze). 2 dawalo jeszcze ostre zbocza przy podnozach gor. */
+	constexpr int32 OczkoGladkie = 3;
+
 	/**
-	 * DEM gladko: B-spline 3. stopnia na siatce co 2 piksele (wezel = srednia 2x2). Dwuliniowy DEM x PrzesadaRegionu
-	 * dawal ostre grzbiety i zalamania na kazdym pikselu (64 m); tu zbocza sa gladkie, a ksztalty od ~130 m w gore.
+	 * DEM gladko: B-spline 3. stopnia na siatce co OczkoGladkie pikseli (wezel = srednia OczkoGladkie^2 pikseli).
+	 * Dwuliniowy DEM x PrzesadaRegionu dawal ostre grzbiety i zalamania na kazdym pikselu (64 m); tu zbocza sa gladkie,
+	 * a ksztalty od ~200 m w gore.
 	 */
 	float DemGladki(double X, double Y)
 	{
-		const double U = ((Y + FSwiat::Polowa) / FSwiat::Bok * GSzer - 1.0) * 0.5;
-		const double V = ((FSwiat::Polowa - X) / FSwiat::Bok * GWys - 1.0) * 0.5;
+		constexpr int32 S = OczkoGladkie;
+		const double U = ((Y + FSwiat::Polowa) / FSwiat::Bok * GSzer - 0.5 * S) / S;
+		const double V = ((FSwiat::Polowa - X) / FSwiat::Bok * GWys - 0.5 * S) / S;
 		const int32 C = FMath::FloorToInt32(U), R = FMath::FloorToInt32(V);
 		auto Wagi = [](float t, float W[4])
 		{
@@ -341,16 +346,37 @@ namespace
 		{
 			for (int32 i = 0; i < 4; ++i)
 			{
-				const int32 c = 2 * (C - 1 + i), r = 2 * (R - 1 + j);
-				const float Wezel = 0.25f * (DemPiksel(c, r, true) + DemPiksel(c + 1, r, true) + DemPiksel(c, r + 1, true) + DemPiksel(c + 1, r + 1, true));
-				Suma += Wu[i] * Wv[j] * Wezel;
+				const int32 c = S * (C - 1 + i), r = S * (R - 1 + j);
+				float Wezel = 0.f;
+				for (int32 b = 0; b < S; ++b)
+				{
+					for (int32 a = 0; a < S; ++a)
+					{
+						Wezel += DemPiksel(c + a, r + b, true);
+					}
+				}
+				Suma += Wu[i] * Wv[j] * Wezel / float(S * S);
 			}
 		}
 		return Suma;
 	}
 
 	/**
-	 * Mapa grywalna bez koryt rzek (cm): przesada x PrzesadaRegionu od podlogi + pagorki ~2,5 km i ~700 m w grze
+	 * Przesada rzezby nad podloga (m -> m): niskie wzniesienia x PrzesadaRegionu jak dawniej, wysokie coraz mniej
+	 * (logarytmicznie, skala ZlagodzenieGor). Czyste x3 robilo z Tatr i Alp sciany 50-70 st.; teraz zbocza gor
+	 * lagodnieja ku gorze, a podnoza przechodza w nizine plynnie. Gladka (ciagla pochodna), wiec bez zalaman.
+	 */
+	float Przesada(float D)
+	{
+		if (D <= 0.f)
+		{
+			return D * FSwiat::PrzesadaRegionu;
+		}
+		return FSwiat::PrzesadaRegionu * FSwiat::ZlagodzenieGor * FMath::Loge(1.f + D / FSwiat::ZlagodzenieGor);
+	}
+
+	/**
+	 * Mapa grywalna bez koryt rzek (cm): przesada (Przesada()) od podlogi + pagorki ~2,5 km i ~700 m w grze
 	 * (+-31 / +-5 m w grze), wygaszane przy morzu jak detal i w dolinie rzeki (Pagorkowosc 0..1).
 	 * Zwraca < 0, gdy to morze / dno (wtedy bez przesady).
 	 */
@@ -369,7 +395,7 @@ namespace
 		// Pagorki duze i lagodne: ~2,5 km i ~700 m w grze.
 		const float Pagorki = Fbm(P / 2.5e5 + FVector2D(1.3, 7.1), 2) * 100.f + Fbm(P / 7.0e4 + FVector2D(-4.4, 2.6), 2) * 15.f;
 		const float B = Baza(X, Y);
-		M = B + (M - B) * FSwiat::PrzesadaRegionu + Pagorki * FMath::SmoothStep(0.f, 20.f, M) * Pagorkowosc;
+		M = B + Przesada(M - B) + Pagorki * FMath::SmoothStep(0.f, 20.f, M) * Pagorkowosc;
 		return float(FMath::Max(M, 1.f) * FSwiat::MetryNaCm);
 	}
 

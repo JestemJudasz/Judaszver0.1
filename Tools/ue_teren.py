@@ -147,22 +147,38 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex):
     t_kol = wezel(mat, unreal.MaterialExpressionTextureSample, -550, -300, texture=kolor)
     lacz(uv1w, "", t_kol, "UVs")
 
-    # Strome zbocza -> skala: saturate((0,55 - normal.z) * 6). Przy przesadzie pionowej x2,5 to ~30 st. naprawde;
-    # wczesniejsze 0,8 robilo skale z lagodnych pagorkow (bezowe pasy).
+    # Strome zbocza -> skala, przejscie lagodne i postrzepione: saturate((0,82 - normal.z) * 2,4 + (latki - 0,5) * 0,35).
+    # Skala zaczyna przeswitywac od ~35 st., pelna od ~66 st.; latki T_Detal.G (1-8 m) rwa granice, zeby trawa
+    # i skala przenikaly sie plamami zamiast twarda linia. Dawniej (0,55 - nz) * 6 = ostra krawedz 57-67 st.
+    # (jeszcze wczesniej 0,8 x ostro robilo bezowe pasy na lagodnych pagorkach).
     nor = wezel(mat, unreal.MaterialExpressionVertexNormalWS, -1000, 600)
     nz = wezel(mat, unreal.MaterialExpressionComponentMask, -850, 600, r=False, g=False, b=True, a=False)
     lacz(nor, "", nz, "")
-    s1 = wezel(mat, unreal.MaterialExpressionSubtract, -700, 600, const_a=0.55)
+    s1 = wezel(mat, unreal.MaterialExpressionSubtract, -700, 600, const_a=0.82)
     lacz(nz, "", s1, "B")
-    s2 = wezel(mat, unreal.MaterialExpressionMultiply, -550, 600, const_b=6.0)
+    s2 = wezel(mat, unreal.MaterialExpressionMultiply, -550, 600, const_b=2.4)
     lacz(s1, "", s2, "A")
+    lat1 = wezel(mat, unreal.MaterialExpressionSubtract, -700, 700, const_b=0.5)
+    lacz(t_s, "G", lat1, "A")
+    lat2 = wezel(mat, unreal.MaterialExpressionMultiply, -550, 700, const_b=0.35)
+    lacz(lat1, "", lat2, "A")
+    s3 = wezel(mat, unreal.MaterialExpressionAdd, -475, 650)
+    lacz(s2, "", s3, "A")
+    lacz(lat2, "", s3, "B")
     stromo = wezel(mat, unreal.MaterialExpressionSaturate, -400, 600)
-    lacz(s2, "", stromo, "")
+    lacz(s3, "", stromo, "")
     skala = wezel(mat, unreal.MaterialExpressionConstant3Vector, -400, 450, constant=unreal.LinearColor(0.155, 0.133, 0.107, 1))
     baza = wezel(mat, unreal.MaterialExpressionLinearInterpolate, -250, -100)
     lacz(t_kol, "RGB", baza, "A")
     lacz(skala, "", baza, "B")
-    lacz(stromo, "", baza, "Alpha")
+    # Mapa Europy (pod papierem) bez zmian: dawny ostry prog (0,55 - nz) * 6.
+    e1 = wezel(mat, unreal.MaterialExpressionSubtract, -700, 800, const_a=0.55)
+    lacz(nz, "", e1, "B")
+    e2 = wezel(mat, unreal.MaterialExpressionMultiply, -550, 800, const_b=6.0)
+    lacz(e1, "", e2, "A")
+    stromo_eu = wezel(mat, unreal.MaterialExpressionSaturate, -400, 800)
+    lacz(e2, "", stromo_eu, "")
+    lacz(stromo_eu, "", baza, "Alpha")
 
     # Jasnosc detalu. Rozmiary plamek (T_Detal: R 24-160, G 4-24, B 1-6 okresow na kafel tekstury):
     #   t_m (kafel 4 m):  G = 17 cm..1 m     t_s (kafel 32 m): R = 20 cm..1,3 m (ziarno trawy), G = 1,3..8 m

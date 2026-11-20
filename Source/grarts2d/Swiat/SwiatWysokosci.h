@@ -36,6 +36,9 @@ struct GRARTS2D_API FSwiat
 	 */
 	static void UstawRegion(bool bWlacz);
 	static constexpr float PrzesadaRegionu = 3.f;
+	/** Mapa grywalna: rzezba wyzsza o D m nad podloga dostaje x PrzesadaRegionu tylko u dolu, wyzej lagodniej:
+	 *  3 * Z * ln(1 + D / Z). Przy Z = 1200 m: 100 m -> 288, 500 m -> 1254, 1500 m -> 2919 (bylo 300, 1500, 4500). */
+	static constexpr float ZlagodzenieGor = 1200.f;
 
 	/** Wysokosc w prawdziwych metrach (do progow: plaza, skaly, snieg). */
 	static float WysokoscMetry(double X, double Y) { return float(Wysokosc(X, Y) / MetryNaCm); }

@@ -340,3 +340,26 @@ Użytkownik pokazał wzór: szara papierowa mapa, wyraźne błękitne rzeki z ob
 - `Data/europa_wys.r16` (134 MB) przekracza limit GitHuba 100 MB, więc w repo jest jego kopia `Data/europa_wys.r16.gz`. Po zmianie wysokości (`Przelicz_Europe.bat`) trzeba ją odświeżyć: `gzip -9 -k -f Data/europa_wys.r16`. Odtworzenie: `gzip -d -k Data/europa_wys.r16.gz`.
 - Git LFS nie działa z tej sesji (serwer LFS zablokowany), więc assety są w zwykłym gicie. Duże pliki zmieniać rzadko, bo każda wersja zostaje w historii.
 - `CLAUDE.md` w repo ma na końcu dopisane zasady graphify z wcześniejszej wersji repo.
+
+## Zgranie przybliżenia mapy papierowej z grywalną (20.11.2026)
+- **Uwaga użytkownika:** przybliżenie na mapie papierowej i na mapie grywalnej jest „rozjechane”.
+- **Przyczyny (`KameraMapy.cpp`):**
+  1. Na progu wejścia (1 km) mapa papierowa miała kąt 50° i pole widzenia 25° (kadr ~443 m), a mapa grywalna 38° i 20° (kadr ~353 m). Wejście przybliżało więc skokiem o ~25% i zmieniało kąt.
+  2. Wejście ustawiało stałą odległość `ProgRegionu` zamiast obecnej, a środek kadru przeskakiwał na punkt pod kursorem.
+  3. Wysokość ogniska zmieniała się po przełączeniu przesady rzeźby i dopiero dojeżdżała, więc kadr dryfował.
+- **Poprawka:**
+  - Mapa papierowa na progu `ProgRegionu` ma kąt `NachylenieRegionu` i pole `FovRegionu`. Kąt płynnie rośnie do `NachylenieDaleko` przy 40 km, pole widzenia do `FovBlisko` przy 20 km i dalej do `FovDaleko` jak dawniej. `NachylenieBlisko` usunięte.
+  - Wejście zostawia środek kadru i obecną odległość (przycięte do zakresu regionu), a zoom do kursora dokańcza się już w regionie.
+  - Wyjście: jeden klik kółka dalej niż najdalszy widok regionu (`MaxOdlRegionu · KrokKolka` = 1,8 km), przy tym samym kącie wychodzi to jak zwykłe oddalenie.
+  - Przy przełączeniu ognisko od razu dostaje wysokość nowego terenu.
+- Skutek uboczny: mapa papierowa przy bliskim oddaleniu (1–3 km) jest teraz bardziej ukośna niż dawniej (38–48° zamiast 50–52°). Od ~5 km jak dawniej.
+
+## Łagodniejsze góry i płynne przejścia na mapie grywalnej (20.11.2026)
+- **Uwaga użytkownika:** góry i wzniesienia mają być gładsze, lepiej przechodzić w teren, wszystko ma się ładnie łączyć.
+- **Przyczyna:** przesada rzeźby ×3 (razem z ×2,5 pionowo) zamieniała prawdziwe zbocza w ściany: w Tatrach połowa zboczy > 20°, 10% > 42°, w Alpach mediana 54°. Do tego skała w `M_Teren` wchodziła twardą linią (57–67°).
+- **Zmiany (tylko mapa grywalna, mapa papierowa/Europy bez zmian):**
+  - `SwiatWysokosci.cpp`: `DemGladki` liczy B-spline na siatce co 3 piksele (`OczkoGladkie`, węzeł = średnia 3×3), było co 2.
+  - Nowe `Przesada(D)` = 3 · Z · ln(1 + D/Z), `FSwiat::ZlagodzenieGor` = 1200 m: niskie pagórki dalej ×3, wysokie góry coraz łagodniej (100 m → 288, 500 m → 1254, 1500 m → 2919 zamiast 300/1500/4500). Funkcja ma ciągłą pochodną, więc nie robi załamań.
+  - Symulacja na danych (spadki w grze, percentyl 90): okolice Krakowa 25° → 14°, Tatry 42° → 24°, Alpy 69° → 45°. Góry są niższe niż dotąd (Tatry ~60% dawnej wysokości nad doliną).
+  - `ue_teren.py`: skała w regionie = saturate((0,82 − nz) · 2,4 + (T_Detal.G − 0,5) · 0,35): prześwituje od ~35°, pełna od ~66°, granica poszarpana łatami 1–8 m zamiast linii. Mapa Europy ma dawny próg (osobne węzły `stromo_eu`). Przebudowane `Zbuduj_Teren.bat`.
+- Kompilacja, shadery i oba testy OK. W grze nieoglądane. Do strojenia: `ZlagodzenieGor` (większe = wyższe, ostrzejsze góry) i `OczkoGladkie`.
