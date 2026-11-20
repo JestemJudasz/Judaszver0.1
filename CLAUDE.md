@@ -1,3 +1,18 @@
+# grarts2d — instrukcja dla modelu AI
+
+Zanim cokolwiek zmienisz, przeczytaj `Docs/PROJEKT.md`: jest tam opis tego, co już powstało, za co odpowiada każdy plik, plan etapów i otwarte decyzje. Po każdej zmianie dopisz krótki wpis w `Docs/PROJEKT.md`.
+
+## Zasady
+- Użytkownik nie programuje i nie robi assetów. Kod piszesz w C++, a assety tworzysz sam (skrypty Python, Blender przez MCP) albo bierzesz z darmowych źródeł. Każde źródło wpisz do `Docs/Assety_zrodla.md`.
+- Styl: realistyczne kształty oglądane z daleka i lekki efekt pikseli, stonowane zielenie, korony drzew w kępach. Wzorem są zrzuty opisane w `Docs/PROJEKT.md`. Nie dodawaj low poly z Kenneya ani niczego, co nie pasuje do tych zrzutów.
+- Odpowiadaj po polsku, prosto. Pliki pobierasz z sieci dopiero po zgodzie użytkownika w czacie: podaj nazwę, źródło i rozmiar.
+- Nie uruchamiaj gry seriami. Po zmianach skompiluj i zrób najwyżej jeden zrzut kontrolny, a resztę zostaw użytkownikowi.
+- Kompilacja: `Kompiluj.bat nopause` (edytor musi być zamknięty), wynik trafia do `Kompilacja.log`.
+- Zrzut kontrolny robi `UnrealEditor.exe grarts2d.uproject -game -windowed -zrzut -odl=<cm>`, a obraz ląduje w `Saved/Screenshots`.
+- Silnik: `D:/UE_5.8` (UE 5.8, build ze źródeł).
+
+---
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

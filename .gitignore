@@ -1,0 +1,17 @@
+# Unreal: pliki generowane
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+*.sln
+*.VC.db
+.vs/
+# Logi kompilacji
+Kompilacja.log
+# Biblioteki Pythona (instalowane osobno) i surowe dane (2 GB, do pobrania ponownie)
+Tools/_py/
+Dane_zrodlowe/
+__pycache__/
+
+# Za duzy na GitHub (134 MB > 100 MB): w repo jest kopia Data/europa_wys.r16.gz
+Data/europa_wys.r16
