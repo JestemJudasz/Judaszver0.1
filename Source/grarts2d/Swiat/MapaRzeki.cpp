@@ -59,7 +59,7 @@ void AMapaRzeki::BeginPlay()
 			}
 			const FVector2D Kier = ((*P)[Wybrane[FMath::Min(k + 1, Wybrane.Num() - 1)]] - (*P)[Wybrane[FMath::Max(k - 1, 0)]]).GetSafeNormal();
 			const FVector Bok(-Kier.Y, Kier.X, 0.0);
-			const FVector Pkt(Q, FMath::Max(0.f, FSwiat::Wysokosc(Q.X, Q.Y)));
+			const FVector Pkt(Q, 1.0); // mapa papierowa jest plaska (ATerenKafle)
 			const float Ranga = FMath::Clamp((*Polowa)[Wybrane[k]] / 2000.f, 0.3f, 1.f); // Tools/rzeki.py: 2000 cm = najwieksze
 			const int32 I = V.Num();
 			V.Append({ Pkt, Pkt });

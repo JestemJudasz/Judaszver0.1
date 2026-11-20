@@ -1,7 +1,7 @@
 // Plik: Source/grarts2d/Kamera/KameraMapy.h
 // Kamera jak w Google Maps: kolko przybliza/oddala do punktu pod kursorem (od 25 m do calej Europy),
 // przeciaganie lewym/srodkowym przyciskiem przesuwa mape, WASD/strzalki przesuwaja, Q/E obracaja.
-// Blisko patrzy ukosnie (~50 st., jak na zrzutach), z daleka prostuje sie do widoku mapy z gory.
+// Blisko patrzy ukosnie jak mapa grywalna (38 st.), z daleka prostuje sie do widoku mapy z gory.
 // Podstawa: TotalFornt/Camera/RTSCameraPawn (uproszczona, bez Enhanced Input).
 #pragma once
 
@@ -55,14 +55,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Kamera")
 	float PredkoscObrotu = 90.f;
 
-	/** Nachylenie (stopnie w dol od poziomu): blisko jak na zrzutach, daleko prawie z gory. */
-	UPROPERTY(EditAnywhere, Category = "Kamera")
-	float NachylenieBlisko = 50.f;
-
+	/** Nachylenie mapy papierowej z daleka (prawie z gory). Blisko, na progu regionu, = NachylenieRegionu. */
 	UPROPERTY(EditAnywhere, Category = "Kamera")
 	float NachylenieDaleko = 85.f;
 
-	/** Waskie pole widzenia = prawie bez perspektywy (wyglad 2D); z daleka szersze, zeby zmiescic Europe. */
+	/** Pole widzenia mapy papierowej: od FovRegionu na progu regionu, przez FovBlisko (20 km), do FovDaleko (cala Europa). */
 	UPROPERTY(EditAnywhere, Category = "Kamera")
 	float FovBlisko = 25.f;
 
@@ -117,6 +114,8 @@ private:
 
 	bool bRegion = false;
 	float CelYaw = 0.f;
+	/** Wysokosc ziemi pod punktem: 0 na mapie papierowej (plaska), teren na mapie grywalnej. */
+	float Ziemia(double X, double Y) const;
 	void Zoom(float Kroki);
 	bool PunktPodKursorem(FVector& Out) const;
 	void UstawKamere();

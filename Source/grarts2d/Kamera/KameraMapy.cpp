@@ -16,7 +16,7 @@ AKameraMapy::AKameraMapy()
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	Kamera = CreateDefaultSubobject<UCameraComponent>(TEXT("Kamera"));
 	Kamera->SetupAttachment(RootComponent);
-	Kamera->FieldOfView = FovBlisko;
+	Kamera->FieldOfView = FovRegionu;
 	SetCanBeDamaged(false);
 }
 
@@ -24,7 +24,7 @@ void AKameraMapy::BeginPlay()
 {
 	Super::BeginPlay();
 	const FVector2D S = FSwiat::Start();
-	Focus = FVector(S.X, S.Y, FMath::Max(0.f, FSwiat::Wysokosc(S.X, S.Y)));
+	Focus = FVector(S.X, S.Y, Ziemia(S.X, S.Y));
 	FParse::Value(FCommandLine::Get(), TEXT("odl="), StartOdl); // np. -odl=20000 (zrzuty kontrolne)
 	Odl = CelOdl = FMath::Clamp(StartOdl, MinOdl, MaxOdl);
 	SetActorRotation(FRotator::ZeroRotator);
@@ -69,8 +69,10 @@ void AKameraMapy::Zoom(float Kroki)
 		CelOdl = FMath::Clamp(CelOdl * FMath::Pow(KrokKolka, -Kroki), MinOdl, MaxOdl);
 		if (Kroki > 0.f && CelOdl < ProgRegionu && GM)
 		{
-			FVector P;
-			GM->WejdzDoRegionu(PunktPodKursorem(P) ? FVector2D(P) : FVector2D(Focus));
+			// Wejscie do mapy grywalnej bez skoku: ten sam srodek kadru, ta sama odleglosc, kat i pole widzenia
+			// (na progu mapa papierowa ma juz rzut regionu). Zoom do kursora trwa dalej, juz w regionie.
+			GM->WejdzDoRegionu(FVector2D(Focus));
+			bZoomDoPunktu = bRegion && PunktPodKursorem(PunktZoomu);
 			return;
 		}
 	}
@@ -86,14 +88,25 @@ void AKameraMapy::UstawRegion(bool bWlacz, FVector2D Srodek)
 	if (bWlacz)
 	{
 		Focus = FVector(Srodek, Focus.Z);
-		Odl = CelOdl = FMath::Min(ProgRegionu, MaxOdlRegionu); // ta sama wysokosc co przed wejsciem, bez skoku
+		// Ta sama odleglosc co na mapie papierowej tuz przed wejsciem (dawniej staly ProgRegionu = skok kadru).
+		Odl = FMath::Clamp(Odl, MinOdlRegionu, MaxOdlRegionu);
+		CelOdl = FMath::Clamp(CelOdl, MinOdlRegionu, MaxOdlRegionu);
 		Yaw = CelYaw = FMath::RoundToFloat(Yaw / 90.f) * 90.f;
 	}
 	else
 	{
-		Odl = CelOdl = FMath::Max(ProgRegionu * 1.6f, MaxOdlRegionu * 1.2f); // dalej niz region, bez skoku w przod
+		// Jeden klik kolka dalej niz najdalszy widok regionu (i powyzej progu, zeby nie wejsc z powrotem).
+		Odl = CelOdl = FMath::Max(ProgRegionu * KrokKolka, MaxOdlRegionu * KrokKolka);
 		CelYaw = Yaw;
 	}
+	// Wysokosc terenu zmienia sie przy przelaczeniu (przesada rzezby w regionie): ognisko od razu na nowym terenie, bez dryfu kadru.
+	Focus.Z = Ziemia(Focus.X, Focus.Y);
+}
+
+float AKameraMapy::Ziemia(double X, double Y) const
+{
+	// Mapa papierowa jest plaska kartka na wysokosci 0 (ATerenKafle), mapa grywalna ma rzezbe.
+	return bRegion ? FMath::Max(0.f, FSwiat::Wysokosc(X, Y)) : 0.f;
 }
 
 bool AKameraMapy::PunktPodKursorem(FVector& Out) const
@@ -194,7 +207,7 @@ void AKameraMapy::Tick(float DeltaSeconds)
 	const FBox2D Granice = FBox2D(FVector2D(-FSwiat::Polowa), FVector2D(FSwiat::Polowa)).ExpandBy(bRegion ? -MarginesRegionu : 0.0);
 	Focus.X = FMath::Clamp(Focus.X, Granice.Min.X, Granice.Max.X);
 	Focus.Y = FMath::Clamp(Focus.Y, Granice.Min.Y, Granice.Max.Y);
-	Focus.Z = FMath::FInterpTo(Focus.Z, FMath::Max(0.f, FSwiat::Wysokosc(Focus.X, Focus.Y)), DeltaSeconds, 6.f);
+	Focus.Z = FMath::FInterpTo(Focus.Z, Ziemia(Focus.X, Focus.Y), DeltaSeconds, 6.f);
 	if (bZoomDoPunktu)
 	{
 		PunktZoomu.Z = Focus.Z;
@@ -228,14 +241,23 @@ void AKameraMapy::UstawPiksele()
 void AKameraMapy::UstawKamere()
 {
 	SetActorLocation(Focus);
-	// Z daleka kamera prostuje sie do pionu (mapa), blisko ukos jak na zrzutach.
-	const float Pitch = bRegion ? NachylenieRegionu : FMath::Lerp(NachylenieBlisko, NachylenieDaleko, Przejscie(2.0e5f, 4.0e6f));
-	Kamera->SetFieldOfView(bRegion ? FovRegionu : FMath::Lerp(FovBlisko, FovDaleko, Przejscie(2.0e6f, 4.0e7f)));
+	// Z daleka kamera prostuje sie do pionu (mapa). Na progu wejscia (ProgRegionu) mapa papierowa ma dokladnie
+	// kat i pole widzenia mapy grywalnej, wiec przejscie miedzy nimi nie zmienia skali ani kadru.
+	float Pitch = NachylenieRegionu;
+	float Fov = FovRegionu;
+	if (!bRegion)
+	{
+		Pitch = FMath::Lerp(NachylenieRegionu, NachylenieDaleko, Przejscie(ProgRegionu, 4.0e6f));
+		Fov = Odl < 2.0e6f
+			? FMath::Lerp(FovRegionu, FovBlisko, Przejscie(ProgRegionu, 2.0e6f))
+			: FMath::Lerp(FovBlisko, FovDaleko, Przejscie(2.0e6f, 4.0e7f));
+	}
+	Kamera->SetFieldOfView(Fov);
 
 	const FRotator Rot(-Pitch, Yaw, 0.f);
 	FVector Offset = -Rot.Vector() * Odl;
 	const FVector Cam = Focus + Offset;
-	const float MinZ = FMath::Max(0.f, FSwiat::Wysokosc(Cam.X, Cam.Y)) + MinNadZiemia;
+	const float MinZ = Ziemia(Cam.X, Cam.Y) + MinNadZiemia;
 	if (Cam.Z < MinZ)
 	{
 		Offset.Z += MinZ - Cam.Z;

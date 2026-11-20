@@ -363,3 +363,16 @@ Użytkownik pokazał wzór: szara papierowa mapa, wyraźne błękitne rzeki z ob
   - Symulacja na danych (spadki w grze, percentyl 90): okolice Krakowa 25° → 14°, Tatry 42° → 24°, Alpy 69° → 45°. Góry są niższe niż dotąd (Tatry ~60% dawnej wysokości nad doliną).
   - `ue_teren.py`: skała w regionie = saturate((0,82 − nz) · 2,4 + (T_Detal.G − 0,5) · 0,35): prześwituje od ~35°, pełna od ~66°, granica poszarpana łatami 1–8 m zamiast linii. Mapa Europy ma dawny próg (osobne węzły `stromo_eu`). Przebudowane `Zbuduj_Teren.bat`.
 - Kompilacja, shadery i oba testy OK. W grze nieoglądane. Do strojenia: `ZlagodzenieGor` (większe = wyższe, ostrzejsze góry) i `OczkoGladkie`.
+
+## Czytelna mapa papierowa: znaki jak rysowane przez dziecko, bez doczytywania (20.11.2026)
+- **Uwaga użytkownika:** na mapie papierowej nie widać, gdzie są góry; po przybliżeniu coś się doczytuje. Góry i lasy mają mieć proste kształty, „jakby dziecko namalowało”.
+- **Przyczyna doczytywania:** mapa papierowa miała rzeźbę 3D z kafli quadtree; przy przybliżaniu kafle dzieliły się na dokładniejsze i rzeźba zmieniała się na oczach gracza. Do tego napis „Doczytywanie terenu… N%”.
+- **Zmiany:**
+  - Mapa papierowa jest płaską kartką na wysokości 0 (`ATerenKafle::Zbuduj(…, bPlaski)`), kafle tylko do poziomu 7 (`MaxPoziomMapy`, 4 km). Dzielenie kafli niczego nie zmienia na ekranie. Kamera (`AKameraMapy::Ziemia`) i wstęgi rzek (`AMapaRzeki`) też na 0. Mapa grywalna bez zmian (rzeźba, ten sam kąt i pole widzenia na progu).
+  - Napis „Doczytywanie terenu” wyłączony (`SwiatGameMode`); ekran ładowania na starcie i przy przejściach został.
+  - `Tools/mapa_znaki.py` (nowy, numpy + pillow, bez Unreala): atlas `Art/Teren/T_MapaZnaki.png` (16 znaków: góry, ośnieżone szczyty, pagórki, drzewa liściaste i iglaste, po 1–3 sztuki; gruby kontur tuszem, płaskie kolory) i dane `T_MapaDane.png` (4096², R = rzeźba w promieniu ~3 km, G = las, B = iglaste, A = ląd). Rysuje też podglądy `Docs/mapa_znaki_podglad_*.png`.
+  - `M_Teren` (`ue_teren.py`, węzeł Custom „ZnakiMapy”): znaki w siatce trójkątnej w UV mapy, stała wielkość na ekranie (`ATerenKafle::ZnakiGestosc` = 16 oczek na szerokość widoku). Punkty siatki zostają na miejscu przy każdym przybliżeniu, nowe znaki wyrastają płynnie między starymi (bez podmieniania). Typ znaku: góra przy rzeźbie > 0,3 (ośnieżona > 0,7), pagórek > 0,15, inaczej drzewo w lesie. Znaki stoją prosto względem ekranu (obrót Q/E) i są rozciągnięte o 1/sin(kąt), więc przy ukośnym widoku nie są spłaszczone. Bliższe znaki zasłaniają dalsze.
+  - Tło: wzorek kropkowanych drzewek usunięty; pod lasem lekko zielonkawy papier, w górach ciepły beż (z `T_MapaDane`).
+  - Parametry co klatkę (`ATerenKafle::Tick`): `ZnakiPoziom`, `ZnakiOs` (prawo ekranu w UV), `ZnakiRozciag`.
+- Kompilacja, shadery i oba testy OK. Zrzut kontrolny (40 km nad Krakowem): znaki widoczne, góry na południu, drzewa w lasach.
+- **Do strojenia:** `ZnakiGestosc` (mniej = większe znaki), progi w `KOD_ZNAKOW` (`ue_teren.py`) i w `mapa_znaki.py` (podgląd liczy to samo). Po zmianie tekstur: usunąć `Content/Swiat/Teren/T_MapaZnaki.uasset` / `T_MapaDane.uasset` i `Zbuduj_Teren.bat`.

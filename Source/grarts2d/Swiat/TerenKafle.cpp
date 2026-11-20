@@ -234,8 +234,12 @@ namespace
 		}
 	}
 
-	/** Liczy siatke kafla. Wywolywane na watku roboczym: tylko FSwiat (tylko odczyt) i wartosci. Rzadkosc < 0 = bez drzew. */
-	TSharedPtr<ATerenKafle::FDane> Zbuduj(FBox2D Obszar, int32 K, int32 Rzadkosc, double Komorka, uint32 Dostepne, float SkalaDrzew)
+	/**
+	 * Liczy siatke kafla. Wywolywane na watku roboczym: tylko FSwiat (tylko odczyt) i wartosci. Rzadkosc < 0 = bez drzew.
+	 * bPlaski: mapa papierowa - plaska kartka na wysokosci 0 (gory rysuja znaki w M_Teren), wiec dzielenie kafli przy
+	 * przyblizaniu niczego nie zmienia na ekranie (dawniej rzezba 3D doczytywala sie na oczach gracza).
+	 */
+	TSharedPtr<ATerenKafle::FDane> Zbuduj(FBox2D Obszar, int32 K, int32 Rzadkosc, double Komorka, uint32 Dostepne, float SkalaDrzew, bool bPlaski)
 	{
 		TSharedPtr<ATerenKafle::FDane> D = MakeShared<ATerenKafle::FDane>();
 		const double Krok = Obszar.GetSize().X / K;
@@ -247,7 +251,8 @@ namespace
 		{
 			for (int32 j = 0; j < R; ++j)
 			{
-				H[i * R + j] = FSwiat::Wysokosc(Obszar.Min.X + (i - 1) * Krok, Obszar.Min.Y + (j - 1) * Krok, &OdRzeki[i * R + j]);
+				OdRzeki[i * R + j] = 0.f;
+				H[i * R + j] = bPlaski ? 0.f : FSwiat::Wysokosc(Obszar.Min.X + (i - 1) * Krok, Obszar.Min.Y + (j - 1) * Krok, &OdRzeki[i * R + j]);
 			}
 		}
 		auto Wys = [&](int32 i, int32 j) { return FMath::Max(H[(i + 1) * R + (j + 1)], 0.f); }; // morze plaskie na 0
@@ -358,7 +363,7 @@ void ATerenKafle::Zbierz(int32 Poziom, int32 X, int32 Y, const FVector& Kamera, 
 	const double Dx = FMath::Max(0.0, FMath::Max(B.Min.X - Kamera.X, Kamera.X - B.Max.X));
 	const double Dy = FMath::Max(0.0, FMath::Max(B.Min.Y - Kamera.Y, Kamera.Y - B.Max.Y));
 	const double Odl = FMath::Sqrt(Dx * Dx + Dy * Dy + double(NadZiemia) * NadZiemia);
-	if (Poziom < MaxPoziom && Odl < B.GetSize().X * Podzial)
+	if (Poziom < MaxPoziomMapy && Odl < B.GetSize().X * Podzial)
 	{
 		for (int32 c = 0; c < 4; ++c)
 		{
@@ -479,6 +484,19 @@ void ATerenKafle::Tick(float DeltaSeconds)
 			MaterialMapy->SetScalarParameterValue(TEXT("Mapa"), Kam->StrefaMapy());
 			const double Skala = FMath::Log2(20.0 * FSwiat::Bok / FMath::Max(1.0, double(Kam->SzerokoscWidoku())));
 			MaterialMapy->SetScalarParameterValue(TEXT("SkalaMapy"), float(FMath::Clamp(Skala, 0.0, 16.0)));
+
+			// Znaki mapy (gory, pagorki, drzewa): ZnakiGestosc oczek na szerokosc widoku, stoja prosto wzgledem ekranu.
+			// UV mapy: U = wschod (+Y swiata), V = poludnie (-X swiata).
+			const double Oczko = double(Kam->SzerokoscWidoku()) / (ZnakiGestosc * FSwiat::Bok);
+			MaterialMapy->SetScalarParameterValue(TEXT("ZnakiPoziom"), float(-FMath::Log2(FMath::Max(Oczko, 1e-9))));
+			if (PCk->PlayerCameraManager)
+			{
+				const FRotator R = PCk->PlayerCameraManager->GetCameraRotation();
+				const double Yaw = FMath::DegreesToRadians(R.Yaw);
+				const double Nachylenie = FMath::Clamp(-R.Pitch, 20.0, 90.0);
+				MaterialMapy->SetVectorParameterValue(TEXT("ZnakiOs"), FLinearColor(float(FMath::Cos(Yaw)), float(FMath::Sin(Yaw)), float(FMath::Sin(Yaw)), float(-FMath::Cos(Yaw))));
+				MaterialMapy->SetScalarParameterValue(TEXT("ZnakiRozciag"), float(1.0 / FMath::Sin(FMath::DegreesToRadians(Nachylenie))));
+			}
 		}
 	}
 
@@ -544,7 +562,7 @@ void ATerenKafle::Odswiez()
 		return;
 	}
 	const FVector Kam = PC->PlayerCameraManager->GetCameraLocation();
-	const float NadZiemia = FMath::Max(0.f, float(Kam.Z) - FMath::Max(0.f, FSwiat::Wysokosc(Kam.X, Kam.Y)));
+	const float NadZiemia = FMath::Max(0.f, float(Kam.Z) - (bRegion ? FMath::Max(0.f, FSwiat::Wysokosc(Kam.X, Kam.Y)) : 0.f));
 
 	Chciane.Reset();
 	// Mapa grywalna: kafel pod ogniskiem kamery (pionek = punkt, na ktory patrzy kamera).
@@ -598,7 +616,8 @@ void ATerenKafle::Odswiez()
 			{
 				Dostepne |= Modele[i] ? (1u << i) : 0u;
 			}
-			Nowy.Zadanie = Async(EAsyncExecution::ThreadPool, [B, Kw, Rzadkosc, Komorka, Dostepne, Skala]() { return Zbuduj(B, Kw, Rzadkosc, Komorka, Dostepne, Skala); });
+			const bool bPlaski = !bRegion;
+			Nowy.Zadanie = Async(EAsyncExecution::ThreadPool, [B, Kw, Rzadkosc, Komorka, Dostepne, Skala, bPlaski]() { return Zbuduj(B, Kw, Rzadkosc, Komorka, Dostepne, Skala, bPlaski); });
 			Kafle.Add(K, MoveTemp(Nowy));
 			++Zadania;
 		}

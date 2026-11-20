@@ -157,8 +157,9 @@ void ASwiatGameMode::Tick(float DeltaSeconds)
 		}
 		return;
 	}
-	// Na mapie grywalnej kafle licza sie z wyprzedzeniem poza kadrem - napis migalby przy kazdym ruchu kamery.
-	NapisMaly->SetText(bGotowe || Teren->WRegionie() ? FText::GetEmpty() : FText::FromString(FString::Printf(TEXT("Doczytywanie terenu... %d%%"), Proc)));
+	// Po wczytaniu bez napisu "Doczytywanie": mapa papierowa jest plaska (dzielenie kafli nic nie zmienia na ekranie),
+	// a mapa grywalna liczy kafle z wyprzedzeniem poza kadrem. Uzytkownik: doczytywanie po przyblizeniu przeszkadza.
+	NapisMaly->SetText(FText::GetEmpty());
 }
 
 void ASwiatGameMode::PoWczytaniu()

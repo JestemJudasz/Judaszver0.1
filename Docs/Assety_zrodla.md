@@ -10,3 +10,6 @@ Tutaj trafia każdy plik spoza projektu oraz każdy asset zrobiony przez AI. Prz
 
 ## Drzewa i krzaki (własne)
 - `Art/Natura/*.glb` → `/Game/Swiat/Natura/SM_*`: modele zrobione skryptem `Tools/natura_drzewa.py`, bez cudzych assetów i bez licencji zewnętrznej.
+
+## Znaki mapy papierowej (własne)
+- `Art/Teren/T_MapaZnaki.png`, `Art/Teren/T_MapaDane.png`: rysowane i liczone skryptem `Tools/mapa_znaki.py` (z danych w `Data/`), bez cudzych assetów.

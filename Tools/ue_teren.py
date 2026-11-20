@@ -15,6 +15,85 @@ DOCEL = "/Game/Swiat/Teren"
 MEL = unreal.MaterialEditingLibrary
 assets = unreal.AssetToolsHelpers.get_asset_tools()
 
+KOD_ZNAKOW = r"""
+// ZnakiMapy (Tools/ue_teren.py, wzor jak w Tools/mapa_znaki.py - podglad).
+// Siatka trojkatna w UV mapy: punkty poziomu L to tez punkty poziomu L+1, wiec znak raz postawiony stoi w tym samym
+// miejscu przy kazdym przyblizeniu. Nowe znaki (punkty "urodzone" na drobniejszym poziomie) wyrastaja plynnie.
+float n0 = floor(T);
+float f = T - n0;
+int L = (int)n0 + 1;
+float s = exp2(-(float)L);
+float U = exp2(-T);
+float2 Pr = Os.xy;
+float2 Gr = float2(Os.y, -Os.x);   // gora ekranu = prawo obrocone o 90 st. (V mapy = poludnie)
+float2 dPx = ddx(P);
+float2 dPy = ddy(P);
+float RozC = clamp(Roz, 1.0, 2.0);
+float gmax = 1.1 * U;
+float Rb = gmax * sqrt(0.25 + 0.25 * RozC * RozC) + 0.3 * U;
+float2 C = P - Gr * (0.45 * gmax * RozC);   // tu mniej wiecej stoi podstawa znaku zawierajacego P
+float3 cF = Tlo; float aF = 0; float kF = -1e30;
+float3 cB = Tlo; float aB = 0; float kB = -1e30;
+int j0 = (int)floor((C.y - Rb) / (0.8660254 * s));
+int j1 = (int)ceil((C.y + Rb) / (0.8660254 * s));
+j1 = min(j1, j0 + 9);
+[loop] for (int j = j0; j <= j1; j++)
+{
+    int i0 = (int)floor((C.x - Rb) / s - 0.5 * j);
+    int i1 = min((int)ceil((C.x + Rb) / s - 0.5 * j), i0 + 9);
+    [loop] for (int i = i0; i <= i1; i++)
+    {
+        uint tz = min(firstbitlow((uint)i), firstbitlow((uint)j));
+        int b = max(0, L - (int)min(tz, 31u));
+        float alfa = (b <= (int)n0) ? 1.0 : saturate((f - 0.1) / 0.7);
+        if (alfa <= 0.0) continue;
+        int sh = L - b;
+        int kx = i >> sh;
+        int ky = j >> sh;
+        float4 h;
+        [unroll] for (int c = 0; c < 4; c++)
+        {
+            uint x = ((uint)kx * 73856093u) ^ ((uint)ky * 19349663u) ^ ((uint)(b * 7 + c) * 83492791u);
+            x ^= x >> 13; x *= 1274126177u; x ^= x >> 16;
+            h[c] = (float)(x & 0xFFFFu) / 65536.0;
+        }
+        float2 A = s * float2(i + 0.5 * j, 0.8660254 * j) + (h.yz - 0.5) * 0.6 * U;
+        float2 q = P - A;
+        if (dot(q - Gr * (0.45 * gmax * RozC), q - Gr * (0.45 * gmax * RozC)) > Rb * Rb) continue;
+        float mip = max(0.0, 10.0 - (float)b);
+        float4 d = Dane.SampleLevel(DaneSampler, A, mip);
+        if (d.a < 0.5) continue;
+        if (Dane.SampleLevel(DaneSampler, A, 0).a < 0.5) continue;
+        float rz = d.r * (1.0 + 0.1 * mip);
+        int typ = -1;
+        if (rz > 0.3 && h.x < (rz - 0.25) / 0.15) typ = rz > 0.7 ? 1 : 0;
+        else if (rz > 0.15 && h.x < (rz - 0.13) / 0.1 * 0.8) typ = 2;
+        else if (d.g > 0.3 && h.x < min(0.75, (d.g - 0.3) / 0.4)) typ = (h.w < d.b / max(d.g, 0.001)) ? 4 : 3;
+        if (typ < 0) continue;
+        // atlas: gora 0-3, snieg 4-6, pagorek 7,8,15, lisciaste 9-11, iglaste 12-14
+        int ile = (typ == 0) ? 4 : 3;
+        int w = (int)(h.w * 7.919 * ile) % ile;
+        int kom = (typ == 0) ? w : (typ == 1) ? 4 + w : (typ == 2) ? ((w == 2) ? 15 : 7 + w) : (typ == 3) ? 9 + w : 12 + w;
+        float wlk = (typ == 0) ? 0.95 : (typ == 1) ? 1.0 : (typ == 2) ? 0.62 : 0.5;
+        float g = wlk * U * (0.75 + 0.25 * alfa) * (0.9 + 0.2 * h.z);
+        float x = dot(q, Pr) / g;
+        float y = dot(q, Gr) / (g * RozC);
+        if (abs(x) >= 0.5 || y < -0.08 || y > 0.92) continue;
+        float2 k0 = float2(kom % 4, kom / 4);
+        float2 uv = (k0 + float2(0.5 + x, 0.92 - y)) * 0.25;
+        float2 gx = float2(dot(dPx, Pr) / g, -dot(dPx, Gr) / (g * RozC)) * 0.25;
+        float2 gy = float2(dot(dPy, Pr) / g, -dot(dPy, Gr) / (g * RozC)) * 0.25;
+        float4 z = Atlas.SampleGrad(AtlasSampler, uv, gx, gy);
+        float a = z.a * alfa;
+        if (a < 0.004) continue;
+        float k = -dot(A, Gr);   // nizej na ekranie = blizej = na wierzchu
+        if (k > kF) { cB = cF; aB = aF; kB = kF; cF = z.rgb; aF = a; kF = k; }
+        else if (k > kB) { cB = z.rgb; aB = a; kB = k; }
+    }
+}
+return lerp(lerp(Tlo, cB, aB), cF, aF);
+"""
+
 
 def importuj(plik, srgb, kompresja=unreal.TextureCompressionSettings.TC_MASKS):
     sciezka = DOCEL + "/" + os.path.splitext(plik)[0]
@@ -58,7 +137,7 @@ def lacz(a, wyj, b, wej):
     assert MEL.connect_material_expressions(a, wyj, b, wej), f"nie polaczono {a.get_name()}.{wyj} -> {b.get_name()}.{wej}"
 
 
-def material(kolor, detal, woda, trawa_tex, mapa_tex):
+def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     # Zbuduj_Teren.bat kasuje stary M_Teren.uasset (czyszczenie istniejacego wywraca commandlet).
     mat = assets.create_asset("M_Teren", DOCEL, unreal.Material, unreal.MaterialFactoryNew())
     mat.set_editor_property("float_precision_mode", unreal.MaterialFloatPrecisionMode.MFPM_FULL)  # UV mapy Europy w pelnej precyzji
@@ -429,7 +508,7 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex):
     lacz(wm_t, "", wynik_teren, "Alpha")
 
     # ===== Mapa strategiczna (pergamin): parametr "Mapa" 0..1 z C++ (oddalenie poza regionem) =====
-    # SkalaMapy = log2(ile kafli T_Mapa na cala Europe). C++ dobiera ja do szerokosci widoku, wiec drzewka lasu
+    # SkalaMapy = log2(ile kafli T_Mapa na cala Europe). C++ dobiera ja do szerokosci widoku, wiec faktura papieru
     # i linia brzegu maja na ekranie stala wielkosc. Dwie oktawy (2^n i 2^(n+1)) przenikaja sie wg czesci ulamkowej.
     mapa = wezel(mat, unreal.MaterialExpressionScalarParameter, 600, -1400, parameter_name="Mapa", default_value=0.0)
     MX, MY = 800, -2600
@@ -477,18 +556,20 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex):
     lacz(uvA, "", mA, "UVs")
     mB = wezel(mat, unreal.MaterialExpressionTextureSample, MX + 450, MY + 300, texture=mapa_tex, sampler_type=LIN)
     lacz(uvB, "", mB, "UVs")
-    drzewka = mlerp(mA, mB, fr, 400, wa="R", wb="R")
     papier = mlerp(mA, mB, fr, 450, wa="G", wb="G")
 
-    # Lad: jasnoszary papier z wloknami; las ciemniejszy z jasnymi drzewkami; gory i skaly jasniejsze.
+    # Lad: jasnoszary papier z wloknami. Pod lasem lekko zielonkawy, w gorach cieply bez - plamy z T_MapaDane
+    # (dane gladkie, wiec bez kwadratow). Drzewka, gory i pagorki rysuje wezel ZnakiMapy (nizej) - Tools/mapa_znaki.py.
     pap = mop(unreal.MaterialExpressionMultiply, m3(0.30, 0.29, 0.27, 600), lerp_c(papier, 0.88, 1.1, 600), 650)
-    las_k = mop(unreal.MaterialExpressionMultiply, pap, lerp_c(drzewka, 0.35, 0.95, 700), 700)
-    las_m = wezel(mat, unreal.MaterialExpressionSmoothStep, MX + 300, MY + 750, const_min=0.3, const_max=0.6)
-    lacz(l2, "", las_m, "Value")
-    lad_m = mlerp(pap, las_k, las_m, 750)
-    gory_m = wezel(mat, unreal.MaterialExpressionSmoothStep, MX + 300, MY + 800, const_min=0.09, const_max=0.2)
-    lacz(t_kol, "B", gory_m, "Value")
-    lad_m = mlerp(lad_m, razy_c(pap, 1.25, 850), gory_m, 850)
+    dane_px = wezel(mat, unreal.MaterialExpressionTextureSample, MX + 450, MY + 700, texture=dane_tex,
+                    sampler_type=unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    lacz(uv1, "", dane_px, "UVs")
+    las_m = wezel(mat, unreal.MaterialExpressionSmoothStep, MX + 300, MY + 750, const_min=0.3, const_max=0.7)
+    lacz(dane_px, "G", las_m, "Value")
+    lad_m = mlerp(pap, mop(unreal.MaterialExpressionMultiply, pap, m3(0.82, 0.95, 0.74, 720), 720), las_m, 750)
+    gory_m = wezel(mat, unreal.MaterialExpressionSmoothStep, MX + 300, MY + 800, const_min=0.15, const_max=0.45)
+    lacz(dane_px, "R", gory_m, "Value")
+    lad_m = mlerp(lad_m, mop(unreal.MaterialExpressionMultiply, pap, m3(1.18, 1.08, 0.92, 820), 820), gory_m, 850)
 
     # Woda: morze i jeziora z T_Europa_Woda bez rzek z pikseli (rzeki rysuje AMapaRzeki jako wstegi).
     # Przy brzegu ciemniejszy pas, na brzegu linia tuszu ~1,2 px ekranu: w pikselach mapy 103 / 2^SkalaMapy.
@@ -505,6 +586,31 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex):
     tusz = mop(unreal.MaterialExpressionMultiply, jeden(unreal.MaterialExpressionOneMinus, t_sat, 1400), bez_rzek, 1400)
     mapa_kol = mlerp(lad_m, morze_m, wm_m, 1450)
     mapa_kol = mlerp(mapa_kol, m3(0.03, 0.03, 0.035, 1500), tusz, 1500)
+
+    # Znaki jak rysowane przez dziecko (gory, osniezone szczyty, pagorki, drzewa) - stala wielkosc na ekranie.
+    # Parametry z C++ (ATerenKafle::Tick): ZnakiPoziom = log2(1 / oczko) w UV mapy, ZnakiOs = prawo ekranu (xy)
+    # w UV mapy, ZnakiRozciag = 1/sin(kat kamery) - znak stoi prosto i nie jest splaszczony przy ukosnym widoku.
+    zn = wezel(mat, unreal.MaterialExpressionCustom, MX + 700, MY + 1500)
+    zn.set_editor_property("code", KOD_ZNAKOW)
+    zn.set_editor_property("description", "ZnakiMapy")
+    zn.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    wejscia = []
+    for nazwa in ("P", "T", "Os", "Roz", "Tlo", "Dane", "Atlas"):
+        ci = unreal.CustomInput()
+        ci.set_editor_property("input_name", nazwa)
+        wejscia.append(ci)
+    zn.set_editor_property("inputs", wejscia)
+    z_poz = wezel(mat, unreal.MaterialExpressionScalarParameter, MX + 450, MY + 1600, parameter_name="ZnakiPoziom", default_value=4.0)
+    z_os = wezel(mat, unreal.MaterialExpressionVectorParameter, MX + 450, MY + 1650, parameter_name="ZnakiOs",
+                 default_value=unreal.LinearColor(1, 0, 0, -1))
+    z_roz = wezel(mat, unreal.MaterialExpressionScalarParameter, MX + 450, MY + 1750, parameter_name="ZnakiRozciag", default_value=1.0)
+    t_dane = wezel(mat, unreal.MaterialExpressionTextureObject, MX + 450, MY + 1800, texture=dane_tex,
+                   sampler_type=unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    t_atlas = wezel(mat, unreal.MaterialExpressionTextureObject, MX + 450, MY + 1900, texture=znaki_tex,
+                    sampler_type=unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    lacz(uv1, "", zn, "P"); lacz(z_poz, "", zn, "T"); lacz(z_os, "", zn, "Os"); lacz(z_roz, "", zn, "Roz")
+    lacz(mapa_kol, "", zn, "Tlo"); lacz(t_dane, "", zn, "Dane"); lacz(t_atlas, "", zn, "Atlas")
+    mapa_kol = zn
 
     wynik = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 600, -300)
     lacz(wynik_teren, "", wynik, "A"); lacz(mapa_kol, "", wynik, "B"); lacz(mapa, "", wynik, "Alpha")
@@ -532,8 +638,11 @@ def main():
     # BC7: gladkie pole odleglosci bez schodkow BC1 (8192^2 = 64 MB).
     woda = importuj("T_Europa_Woda.png", False, unreal.TextureCompressionSettings.TC_BC7)
     trawa = importuj("T_Trawa.png", False)  # mapa grywalna: zdzbla, kropki kwiatow/kamykow/blyskow
-    mapa = importuj("T_Mapa.png", False)    # mapa strategiczna: drzewka lasu, faktura papieru
-    material(kolor, detal, woda, trawa, mapa)
+    mapa = importuj("T_Mapa.png", False)    # mapa strategiczna: faktura papieru
+    # Tools/mapa_znaki.py: dane, gdzie stawiac znaki (BC7 - gladkie dane), i atlas znakow (sRGB z alfa).
+    dane = importuj("T_MapaDane.png", False, unreal.TextureCompressionSettings.TC_BC7)
+    znaki = importuj("T_MapaZnaki.png", True)
+    material(kolor, detal, woda, trawa, mapa, dane, znaki)
     material_rzek()
 
 

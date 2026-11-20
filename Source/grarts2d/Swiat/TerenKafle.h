@@ -70,9 +70,17 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Teren")
 	float Podzial = 2.0f;
 
-	/** Najglebszy poziom: 10 = kafle 512 m. */
+	/** Najglebszy poziom: 10 = kafle 512 m (mapa grywalna). */
 	UPROPERTY(EditAnywhere, Category = "Teren")
 	int32 MaxPoziom = 10;
+
+	/** Najglebszy poziom mapy papierowej: plaska kartka, wiec wystarcza kafle 4 km (7) - mniej liczenia przy zoomie. */
+	UPROPERTY(EditAnywhere, Category = "Teren")
+	int32 MaxPoziomMapy = 7;
+
+	/** Znaki mapy papierowej (M_Teren, Tools/mapa_znaki.py): ile oczek siatki znakow na szerokosc widoku. Wiecej = mniejsze i gestsze. */
+	UPROPERTY(EditAnywhere, Category = "Teren")
+	float ZnakiGestosc = 16.f;
 
 	/** Ile kafli naraz liczy sie w tle. */
 	UPROPERTY(EditAnywhere, Category = "Teren")
