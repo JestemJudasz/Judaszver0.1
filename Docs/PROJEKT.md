@@ -335,7 +335,7 @@ Użytkownik pokazał wzór: szara papierowa mapa, wyraźne błękitne rzeki z ob
 - Kod bez zmian.
 
 ## Kopia na GitHubie (20.11.2026)
-- Projekt jest w repozytorium `JestemJudasz/Judaszver0.1`, gałąź `claude/project-thread-sjbjq6`. Folder `D:\GRY\grarts2d` ma własne repozytorium git na tej samej historii.
+- Projekt jest w repozytorium `JestemJudasz/Judaszver0.1`, gałąź `claude/project-thread-sjbjq6`. Folder `D:\GRY\grarts2d` nie ma jeszcze lokalnego gita: AI nie dostało zgody na usuwanie plików w folderze, a bez niej git zostawia pliki blokad `.lock`. Kopię odświeża się, wysyłając zmienione pliki do tej gałęzi z sesji AI.
 - W repo: `Source`, `Config`, `Content`, `Art`, `Data`, `Docs`, `Tools` (bez `Tools/_py`), pliki z katalogu głównego. Poza repo (`.gitignore`): `Binaries`, `Intermediate`, `Saved`, `DerivedDataCache`, `Dane_zrodlowe` (2 GB surowych danych), `Tools/_py`.
 - `Data/europa_wys.r16` (134 MB) przekracza limit GitHuba 100 MB, więc w repo jest jego kopia `Data/europa_wys.r16.gz`. Po zmianie wysokości (`Przelicz_Europe.bat`) trzeba ją odświeżyć: `gzip -9 -k -f Data/europa_wys.r16`. Odtworzenie: `gzip -d -k Data/europa_wys.r16.gz`.
 - Git LFS nie działa z tej sesji (serwer LFS zablokowany), więc assety są w zwykłym gicie. Duże pliki zmieniać rzadko, bo każda wersja zostaje w historii.
