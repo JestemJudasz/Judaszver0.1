@@ -137,10 +137,12 @@ def lacz(a, wyj, b, wej):
     assert MEL.connect_material_expressions(a, wyj, b, wej), f"nie polaczono {a.get_name()}.{wyj} -> {b.get_name()}.{wej}"
 
 
-def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
+def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex, fale_tex):
     # Zbuduj_Teren.bat kasuje stary M_Teren.uasset (czyszczenie istniejacego wywraca commandlet).
     mat = assets.create_asset("M_Teren", DOCEL, unreal.Material, unreal.MaterialFactoryNew())
     mat.set_editor_property("float_precision_mode", unreal.MaterialFloatPrecisionMode.MFPM_FULL)  # UV mapy Europy w pelnej precyzji
+    # Normalna w przestrzeni swiata: lad = normalna wierzcholka (jak dotad), woda = fale z T_WodaFale (21.11.2026).
+    mat.set_editor_property("tangent_space_normal", False)
 
     # UV nie z mapy w siatce: ProceduralMeshComponent trzyma UV w polowie precyzji (16 bit), co przy mapie 0..1 dawalo
     # kwadraty 128-256 m. Pozycja w swiecie / LocalPosition tez zawiodly: w pikselu liczone z glebi, na oddaleniu
@@ -336,9 +338,11 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     lacz(uv_t2, "", tB, "UVs")
 
     # Jasnosc zdzbel i szum do poszarpanych przejsc.
-    z1 = wezel(mat, unreal.MaterialExpressionLinearInterpolate, X, Y + 300, const_a=0.7, const_b=1.3)
+    # 21.11.2026 (watek grafiki): kontrast zdzbel 0,7-1,3 -> 0,8-1,2 i 0,85-1,15 -> 0,9-1,1. Przy pikselach mocne
+    # zdzbla dawaly plamy "w kratke" (moro). Cofniecie: przywroc stare liczby.
+    z1 = wezel(mat, unreal.MaterialExpressionLinearInterpolate, X, Y + 300, const_a=0.8, const_b=1.2)
     lacz(tA, "R", z1, "Alpha")
-    z2 = wezel(mat, unreal.MaterialExpressionLinearInterpolate, X, Y + 380, const_a=0.85, const_b=1.15)
+    z2 = wezel(mat, unreal.MaterialExpressionLinearInterpolate, X, Y + 380, const_a=0.9, const_b=1.1)
     lacz(tB, "G", z2, "Alpha")
     zdzbla = razy(z1, z2, 340)
     sz1 = wezel(mat, unreal.MaterialExpressionSubtract, X, Y + 460, const_b=0.5)
@@ -348,7 +352,7 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
 
     # Odmiany ziemi (liniowo; sRGB ze zrzutow w komentarzach).
     swieza = k3(0.098, 0.216, 0.034, 600)    # 88,128,52
-    sucha = k3(0.181, 0.150, 0.048, 680)     # 118,108,62
+    sucha = k3(0.141, 0.162, 0.045, 680)     # 106,112,60 (21.11 noc: bylo 118,108,62 - brazowe laty)
     runo = k3(0.048, 0.098, 0.027, 760)      # 62,88,46 pod lasem
     wrzos = k3(0.162, 0.098, 0.181, 840)     # 112,88,118
     kwiat = k3(0.610, 0.485, 0.061, 920)     # 205,185,70
@@ -358,7 +362,7 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     lacz(t_s, "G", s1, "A")
     s2 = wezel(mat, unreal.MaterialExpressionAdd, X + 100, Y + 1000)
     lacz(t_d, "B", s2, "A"); lacz(s1, "", s2, "B")
-    w_sucha = prog(s2, 0.68, 0.78, szum, 1000)
+    w_sucha = prog(s2, 0.66, 0.92, szum, 1000)  # 21.11 noc: miekkie przejscie (bylo 0,68-0,78)
     # Las z mapy (ciemna zielen w T_Europa_Kolor) -> ciemniejsze runo.
     # Zielen liniowa: las 0,05-0,09, laka 0,15-0,3 -> (0,14 - G) * 15: las 0,8-1,3, laka < 0.
     l1 = wezel(mat, unreal.MaterialExpressionSubtract, X, Y + 1100, const_a=0.14)
@@ -384,7 +388,7 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     c = lerp(c, wrzos, w_wrzos, 1500)
     c = razy(c, zdzbla, 1550)
     duze = razy(c, d3, 1600)  # duze plamy jasnosci (256 m)
-    c = lerp(duze, kwiat, w_kwiat, 1650)
+    c = duze  # zolte kwiatki usuniete 20.11.2026 (uzytkownik): przy efekcie pikseli wygladaly jak plamy farby; w_kwiat nieuzywane
     skala_z = razy(skala, zdzbla, 1700)
     ziemia = lerp(c, skala_z, stromo, 1750)
 
@@ -456,7 +460,7 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     # Region: brzeg jak na zrzutach - brazowe bloto ze zdzblami i jasnymi kamyczkami (kropki T_Trawa.B).
     bloto_r = razy(k3(0.127, 0.076, 0.038, 1900), zdzbla, 1950)  # 100,78,55
     kamyki = k3(0.40, 0.38, 0.35, 2000)
-    k_alfa = wezel(mat, unreal.MaterialExpressionMultiply, X, Y + 2050, const_b=0.85)
+    k_alfa = wezel(mat, unreal.MaterialExpressionMultiply, X, Y + 2050, const_b=0.0)  # 21.11 noc: biale kamyki na brzegu usuniete (wielkie plamy)
     lacz(tB, "B", k_alfa, "A")
     bloto_r = lerp(bloto_r, kamyki, k_alfa, 2050)
     bloto_razem = lerp(bloto_d, bloto_r, region, 2100)
@@ -479,7 +483,7 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     tF = wezel(mat, unreal.MaterialExpressionTextureSample, X - 200, Y + 2400, texture=trawa_tex, sampler_type=LIN)
     lacz(pan, "", tF, "UVs")
     f_al = razy(tF, region, 2450, wa="B")
-    f_al2 = wezel(mat, unreal.MaterialExpressionMultiply, X + 500, Y + 2450, const_b=0.5)
+    f_al2 = wezel(mat, unreal.MaterialExpressionMultiply, X + 500, Y + 2450, const_b=0.0)  # 21.11 noc: biale kropki na wodzie usuniete (uzytkownik)
     lacz(f_al, "", f_al2, "A")
     kol_w = lerp(kol_w0, k3(0.30, 0.38, 0.42, 2500), f_al2, 2500)
     # Jasna linia na samej krawedzi wody (jak na zrzutach).
@@ -502,9 +506,36 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     lacz(kol_w, "", piana, "B")
     lacz(p4, "", piana, "Alpha")
 
+    # Region (21.11.2026): ruchoma piana przy brzegu - pas ~2-3 m od krawedzi, plamy szumu (T_Trawa.G) plyna z pradem.
+    pw1 = wezel(mat, unreal.MaterialExpressionMultiply, X, Y + 3500, const_b=70.0)
+    lacz(p2, "", pw1, "A")                                           # |R - 0,507| (jeziora, morze)
+    pw2 = wezel(mat, unreal.MaterialExpressionSaturate, X + 100, Y + 3500)
+    lacz(pw1, "", pw2, "")
+    pw3 = maks(pw2, jeden_minus(bez_pikseli, 3550), 3550)
+    qw1 = wezel(mat, unreal.MaterialExpressionMultiply, X, Y + 3600, const_b=-0.4)
+    lacz(odl, "", qw1, "A")                                          # rzeki z linii: 2,5 m w glab wody
+    qw2 = wezel(mat, unreal.MaterialExpressionSaturate, X + 100, Y + 3600)
+    lacz(qw1, "", qw2, "")
+    qw3 = lerp(jeden, qw2, region, 3600)
+    pw4 = wezel(mat, unreal.MaterialExpressionMin, X + 500, Y + 3650)
+    lacz(pw3, "", pw4, "A"); lacz(qw3, "", pw4, "B")
+    pas_piany = jeden_minus(pw4, 3650)                               # 1 przy brzegu, 0 dalej
+    uv_p = wezel(mat, unreal.MaterialExpressionMultiply, X - 400, Y + 3700, const_b=1.0 / 6.0)
+    lacz(uv0, "", uv_p, "A")
+    pan_p = wezel(mat, unreal.MaterialExpressionPanner, X - 300, Y + 3700, speed_x=-0.006, speed_y=0.011)
+    lacz(uv_p, "", pan_p, "Coordinate")
+    tP = wezel(mat, unreal.MaterialExpressionTextureSample, X - 200, Y + 3700, texture=trawa_tex, sampler_type=LIN)
+    lacz(pan_p, "", tP, "UVs")
+    plamy = wezel(mat, unreal.MaterialExpressionSmoothStep, X, Y + 3750, const_min=0.45, const_max=0.62)
+    lacz(tP, "G", plamy, "Value")
+    piana_al = razy(razy(pas_piany, plamy, 3750), region, 3800)
+    piana_al2 = wezel(mat, unreal.MaterialExpressionMultiply, X + 500, Y + 3800, const_b=0.75)
+    lacz(piana_al, "", piana_al2, "A")  # krycie piany
+    piana_ruch = lerp(piana, k3(0.42, 0.46, 0.44, 3850), piana_al2, 3850)
+
     wynik_teren = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 200, -300)
     lacz(z_brzegiem, "", wynik_teren, "A")
-    lacz(piana, "", wynik_teren, "B")
+    lacz(piana_ruch, "", wynik_teren, "B")
     lacz(wm_t, "", wynik_teren, "Alpha")
 
     # ===== Mapa strategiczna (pergamin): parametr "Mapa" 0..1 z C++ (oddalenie poza regionem) =====
@@ -618,6 +649,10 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     # Mapa matowa (bez polysku wody).
     szorstkosc0 = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 200, 0, const_a=1.0, const_b=0.3)
     lacz(wm_t, "", szorstkosc0, "Alpha")
+    # Region: woda gladka (0,07) - blask slonca i odbicie nieba na falach; mapa Europy jak dotad (0,3).
+    szorstkosc_wody = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 100, 50, const_a=0.3, const_b=0.07)
+    lacz(region, "", szorstkosc_wody, "Alpha")
+    lacz(szorstkosc_wody, "", szorstkosc0, "B")
     szorstkosc = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 400, 0, const_b=1.0)
     lacz(szorstkosc0, "", szorstkosc, "A"); lacz(mapa, "", szorstkosc, "Alpha")
     MEL.connect_material_property(szorstkosc, "", unreal.MaterialProperty.MP_ROUGHNESS)
@@ -626,6 +661,42 @@ def material(kolor, detal, woda, trawa_tex, mapa_tex, dane_tex, znaki_tex):
     odbicie = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 400, 150, const_b=0.1)
     lacz(odbicie0, "", odbicie, "A"); lacz(mapa, "", odbicie, "Alpha")
     MEL.connect_material_property(odbicie, "", unreal.MaterialProperty.MP_SPECULAR)
+
+    # Fale wody (region, 21.11.2026): dwie warstwy T_WodaFale - drobne (kafel 16 m) i dlugie (44 m), plyna w rozne
+    # strony. Normalna swiata = normalize(fale.xy * sila, 1), mieszana z normalna wierzcholka wg maski wody.
+    NRM = unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL
+    FX, FY = 0, 600
+    uv_f1 = wezel(mat, unreal.MaterialExpressionMultiply, FX - 600, FY, const_b=0.25)
+    lacz(uv0, "", uv_f1, "A")
+    pan_f1 = wezel(mat, unreal.MaterialExpressionPanner, FX - 500, FY, speed_x=0.012, speed_y=0.007)
+    lacz(uv_f1, "", pan_f1, "Coordinate")
+    tN1 = wezel(mat, unreal.MaterialExpressionTextureSample, FX - 400, FY, texture=fale_tex, sampler_type=NRM)
+    lacz(pan_f1, "", tN1, "UVs")
+    uv_f2 = wezel(mat, unreal.MaterialExpressionMultiply, FX - 600, FY + 200, const_b=1.0 / 11.0)
+    lacz(uv0, "", uv_f2, "A")
+    pan_f2 = wezel(mat, unreal.MaterialExpressionPanner, FX - 500, FY + 200, speed_x=-0.004, speed_y=0.003)
+    lacz(uv_f2, "", pan_f2, "Coordinate")
+    tN2 = wezel(mat, unreal.MaterialExpressionTextureSample, FX - 400, FY + 200, texture=fale_tex, sampler_type=NRM)
+    lacz(pan_f2, "", tN2, "UVs")
+    n_suma = wezel(mat, unreal.MaterialExpressionAdd, FX - 200, FY + 100)
+    lacz(tN1, "", n_suma, "A"); lacz(tN2, "", n_suma, "B")
+    n_xy = wezel(mat, unreal.MaterialExpressionComponentMask, FX - 100, FY + 100, r=True, g=True, b=False, a=False)
+    lacz(n_suma, "", n_xy, "")
+    n_sila = wezel(mat, unreal.MaterialExpressionMultiply, FX, FY + 100, const_b=0.55)   # sila fal (21.11 wieczorem: 0,3 bylo za slabo widac)
+    lacz(n_xy, "", n_sila, "A")
+    n_z = wezel(mat, unreal.MaterialExpressionConstant, FX, FY + 200, r=1.0)
+    n_3 = wezel(mat, unreal.MaterialExpressionAppendVector, FX + 100, FY + 100)
+    lacz(n_sila, "", n_3, "A"); lacz(n_z, "", n_3, "B")
+    n_fale = wezel(mat, unreal.MaterialExpressionNormalize, FX + 200, FY + 100)
+    lacz(n_3, "", n_fale, "VectorInput")
+    n_wierz = wezel(mat, unreal.MaterialExpressionVertexNormalWS, FX + 200, FY + 250)
+    n_maska = wezel(mat, unreal.MaterialExpressionMultiply, FX + 200, FY + 350)
+    lacz(wm_t, "", n_maska, "A"); lacz(region, "", n_maska, "B")
+    n_mix = wezel(mat, unreal.MaterialExpressionLinearInterpolate, FX + 350, FY + 200)
+    lacz(n_wierz, "", n_mix, "A"); lacz(n_fale, "", n_mix, "B"); lacz(n_maska, "", n_mix, "Alpha")
+    n_wynik = wezel(mat, unreal.MaterialExpressionNormalize, FX + 450, FY + 200)
+    lacz(n_mix, "", n_wynik, "VectorInput")
+    MEL.connect_material_property(n_wynik, "", unreal.MaterialProperty.MP_NORMAL)
 
     MEL.recompile_material(mat)
     unreal.EditorAssetLibrary.save_loaded_asset(mat)
@@ -642,8 +713,43 @@ def main():
     # Tools/mapa_znaki.py: dane, gdzie stawiac znaki (BC7 - gladkie dane), i atlas znakow (sRGB z alfa).
     dane = importuj("T_MapaDane.png", False, unreal.TextureCompressionSettings.TC_BC7)
     znaki = importuj("T_MapaZnaki.png", True)
-    material(kolor, detal, woda, trawa, mapa, dane, znaki)
+    fale = importuj("T_WodaFale.png", False, unreal.TextureCompressionSettings.TC_NORMALMAP)  # fale wody (region)
+    material(kolor, detal, woda, trawa, mapa, dane, znaki, fale)
     material_rzek()
+    material_chmur(detal)
+
+
+def material_chmur(detal):
+    """M_ChmuryCien (21.11.2026): funkcja swiatla slonca w regionie (C++ ASwiatGameMode::UstawSwiatloRegionu).
+    Plamy cienia chmur ~0,5-1,5 km wedruja z wiatrem (5 m/s). Dwie probki T_Detal.B (duze plamy) w roznych skalach,
+    prog miekki; w cieniu slonce slabnie do 55%."""
+    mat = assets.create_asset("M_ChmuryCien", DOCEL, unreal.Material, unreal.MaterialFactoryNew())
+    mat.set_editor_property("material_domain", unreal.MaterialDomain.MD_LIGHT_FUNCTION)
+    LIN = unreal.MaterialSamplerType.SAMPLERTYPE_MASKS
+    wp = wezel(mat, unreal.MaterialExpressionWorldPosition, -1200, 0)
+    xy = wezel(mat, unreal.MaterialExpressionComponentMask, -1050, 0, r=True, g=True, b=False, a=False)
+    lacz(wp, "", xy, "")
+    probki = []
+    for k, (skala, vx, vy) in enumerate(((1.0 / 200000.0, 0.0025, 0.0019), (1.0 / 90000.0, 0.0051, 0.0043))):
+        uv = wezel(mat, unreal.MaterialExpressionMultiply, -900, 200 * k, const_b=skala)
+        lacz(xy, "", uv, "A")
+        pan = wezel(mat, unreal.MaterialExpressionPanner, -750, 200 * k, speed_x=vx, speed_y=vy)
+        lacz(uv, "", pan, "Coordinate")
+        t = wezel(mat, unreal.MaterialExpressionTextureSample, -600, 200 * k, texture=detal, sampler_type=LIN)
+        lacz(pan, "", t, "UVs")
+        probki.append(t)
+    m2 = wezel(mat, unreal.MaterialExpressionMultiply, -400, 200, const_b=0.35)
+    lacz(probki[1], "G", m2, "A")
+    suma = wezel(mat, unreal.MaterialExpressionAdd, -300, 100)
+    lacz(probki[0], "B", suma, "A"); lacz(m2, "", suma, "B")
+    chmura = wezel(mat, unreal.MaterialExpressionSmoothStep, -150, 100, const_min=0.66, const_max=0.80)
+    lacz(suma, "", chmura, "Value")
+    swiatlo = wezel(mat, unreal.MaterialExpressionLinearInterpolate, 0, 100, const_a=1.0, const_b=0.4)
+    lacz(chmura, "", swiatlo, "Alpha")
+    MEL.connect_material_property(swiatlo, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    MEL.recompile_material(mat)
+    unreal.EditorAssetLibrary.save_loaded_asset(mat)
+    unreal.log("Teren: M_ChmuryCien gotowy")
 
 
 def material_rzek():

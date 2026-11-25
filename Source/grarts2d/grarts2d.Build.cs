@@ -12,6 +12,7 @@ public class grarts2d : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
+			"AssetRegistry",
 			"Core",
 			"CoreUObject",
 			"Engine",

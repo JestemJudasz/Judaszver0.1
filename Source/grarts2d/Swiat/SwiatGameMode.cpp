@@ -3,13 +3,19 @@
 #include "Swiat/SwiatWysokosci.h"
 #include "Swiat/TerenKafle.h"
 #include "Swiat/MapaRzeki.h"
+#include "Budowy/Budowniczy.h"
 #include "Kamera/KameraMapy.h"
+#include "Osada/Rody.h"
+#include "EngineUtils.h"
+#include "UI/MenuGlowne.h"
+#include "UI/Ustawienia.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/SkyLight.h"
 #include "Engine/PostProcessVolume.h"
+#include "Materials/MaterialInterface.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Styling/CoreStyle.h"
@@ -80,13 +86,36 @@ void ASwiatGameMode::StartPlay()
 		Korekta->Settings.AutoExposureBias = -0.7f;
 		Korekta->Settings.bOverride_ColorSaturation = true;
 		Korekta->Settings.ColorSaturation = FVector4(0.82, 0.82, 0.82, 1.0);
+		// Grafika 21.11.2026 (watek "Poprawic grafike"): glebia obrazu bez kosztu Lumenu.
+		// Mocniejszy cien kontaktowy (SSAO) pod domami, plotami, ludzmi i w kepach drzew.
+		Korekta->Settings.bOverride_AmbientOcclusionIntensity = true;
+		Korekta->Settings.AmbientOcclusionIntensity = 0.8f;
+		Korekta->Settings.bOverride_AmbientOcclusionRadius = true;
+		Korekta->Settings.AmbientOcclusionRadius = 150.f;
+		// Cieple swiatlo slonca, chlodniejsze cienie (klimat poznego popoludnia), lekko wiekszy kontrast.
+		Korekta->Settings.bOverride_ColorGainHighlights = true;
+		Korekta->Settings.ColorGainHighlights = FVector4(1.05, 1.01, 0.93, 1.0);
+		Korekta->Settings.bOverride_ColorGainShadows = true;
+		Korekta->Settings.ColorGainShadows = FVector4(0.95, 0.99, 1.06, 1.0);
+		Korekta->Settings.bOverride_ColorContrast = true;
+		Korekta->Settings.ColorContrast = FVector4(1.06, 1.06, 1.06, 1.0);
+		// Delikatna winieta: oko idzie do srodka kadru.
+		Korekta->Settings.bOverride_VignetteIntensity = true;
+		Korekta->Settings.VignetteIntensity = 0.3f;
 	}
 
 	Teren = W->SpawnActor<ATerenKafle>(FVector::ZeroVector, FRotator::ZeroRotator, P);
 	W->SpawnActor<AMapaRzeki>(FVector::ZeroVector, FRotator::ZeroRotator, P);
+	W->SpawnActor<ABudowniczy>(FVector::ZeroVector, FRotator::ZeroRotator, P); // stawianie budynkow (klawisz B)
 
 	Super::StartPlay();
 	PokazEkranLadowania();
+	// Ustawienia gracza (grafika, klawisze, dzwiek, kamera) i menu startowe; -zrzut bez menu, chyba ze z -menu.
+	FUstawienia::Wczytaj();
+	if (!FParse::Param(FCommandLine::Get(), TEXT("zrzut")) || FParse::Param(FCommandLine::Get(), TEXT("menu")))
+	{
+		SMenuGlowne::Otworz(W, true);
+	}
 	// -region: start od razu w mapie grywalnej wokol punktu startu (zrzuty kontrolne: -zrzut -region).
 	if (FParse::Param(FCommandLine::Get(), TEXT("region")))
 	{
@@ -140,6 +169,15 @@ void ASwiatGameMode::PokazEkranLadowania()
 void ASwiatGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// Menu w grze: F10 zawsze, Esc na mapie Europy (na mapie grywalnej Esc najpierw zamyka okna, patrz ABudowniczy).
+	if (const APlayerController* PC = GetWorld()->GetFirstPlayerController())
+	{
+		const AKameraMapy* Kam = Cast<AKameraMapy>(PC->GetPawn());
+		if (PC->WasInputKeyJustPressed(EKeys::F10) || (PC->WasInputKeyJustPressed(EKeys::Escape) && Kam && !Kam->WRegionie()))
+		{
+			SMenuGlowne::Otworz(GetWorld(), false);
+		}
+	}
 	if (!Teren.IsValid() || !NapisDuzy.IsValid())
 	{
 		return;
@@ -172,16 +210,34 @@ void ASwiatGameMode::PoWczytaniu()
 	{
 		bZrzutZaplanowany = true;
 		UWorld* W = GetWorld();
+		// -ui: zwykly zrzut z interfejsem (HighResShot pomija Slate); -czekaj=s: ile sekund po wczytaniu (domyslnie 2).
+		float Czekaj = 2.f;
+		FParse::Value(FCommandLine::Get(), TEXT("czekaj="), Czekaj);
+		const bool bUI = FParse::Param(FCommandLine::Get(), TEXT("ui"));
 		FTimerHandle T1, T2;
-		W->GetTimerManager().SetTimer(T1, [W]()
+		// -widokrodu: w polowie czekania kamera nad osada pierwszego rodu AI (zrzut murow i ukladu osady rodu).
+		if (FParse::Param(FCommandLine::Get(), TEXT("widokrodu")))
+		{
+			FTimerHandle T3;
+			W->GetTimerManager().SetTimer(T3, [W]()
+			{
+				APlayerController* PC = W->GetFirstPlayerController();
+				AKameraMapy* Kam = PC ? Cast<AKameraMapy>(PC->GetPawn()) : nullptr;
+				for (TActorIterator<ARody> It(W); It && Kam; ++It)
+				{
+					if (It->Lista().Num() > 0) { Kam->UstawOgnisko(It->Lista()[0].Gdzie); }
+				}
+			}, FMath::Max(0.5f, Czekaj * 0.5f), false);
+		}
+		W->GetTimerManager().SetTimer(T1, [W, bUI]()
 		{
 			// Przez kontroler gracza: komenda trafia do okna gry (GEngine->Exec jej nie wykonywal).
 			if (APlayerController* PC = W->GetFirstPlayerController())
 			{
-				PC->ConsoleCommand(TEXT("HighResShot 1"));
+				PC->ConsoleCommand(bUI ? TEXT("shot showui") : TEXT("HighResShot 1"));
 			}
-		}, 2.f, false);
-		W->GetTimerManager().SetTimer(T2, []() { FPlatformMisc::RequestExit(false); }, 5.f, false);
+		}, Czekaj, false);
+		W->GetTimerManager().SetTimer(T2, []() { FPlatformMisc::RequestExit(false); }, Czekaj + 3.f, false);
 	}
 }
 
@@ -232,6 +288,10 @@ void ASwiatGameMode::UstawSwiatloRegionu(bool bRegion)
 	if (Slonce.IsValid())
 	{
 		Slonce->GetLightComponent()->SetWorldRotation(bRegion ? FRotator(-45.f, 135.f, 0.f) : FRotator(-38.f, 35.f, 0.f));
+		// Cienie chmur (21.11.2026): funkcja swiatla M_ChmuryCien (Tools/ue_teren.py) tylko w regionie.
+		// Brak assetu = brak chmur (nic sie nie psuje).
+		UMaterialInterface* Chmury = bRegion ? LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Swiat/Teren/M_ChmuryCien.M_ChmuryCien")) : nullptr;
+		Slonce->GetLightComponent()->SetLightFunctionMaterial(Chmury);
 	}
 	if (SwiatloNieba.IsValid())
 	{
@@ -250,5 +310,6 @@ void ASwiatGameMode::EndPlay(const EEndPlayReason::Type Reason)
 		GEngine->GameViewport->RemoveViewportWidgetContent(Nakladka.ToSharedRef());
 	}
 	Nakladka.Reset();
+	SMenuGlowne::Zamknij();
 	Super::EndPlay(Reason);
 }

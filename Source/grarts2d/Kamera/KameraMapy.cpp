@@ -9,6 +9,10 @@
 #include "InputCoreTypes.h"
 #include "Misc/CommandLine.h"
 #include "HAL/IConsoleManager.h"
+#include "UI/Ustawienia.h"
+
+bool AKameraMapy::bBezLewegoPrzeciagania = false;
+bool AKameraMapy::bBitwaBlisko = false;
 
 AKameraMapy::AKameraMapy()
 {
@@ -48,8 +52,8 @@ void AKameraMapy::SetupPlayerInputComponent(UInputComponent* In)
 	In->BindKey(EKeys::E, IE_Pressed, this, &AKameraMapy::ObrotP);
 }
 
-void AKameraMapy::KolkoW() { Zoom(1.f); }
-void AKameraMapy::KolkoZ() { Zoom(-1.f); }
+void AKameraMapy::KolkoW() { Zoom((FUstawienia::bOdwrocZoom ? -1.f : 1.f) * FUstawienia::ZoomMn); }
+void AKameraMapy::KolkoZ() { Zoom((FUstawienia::bOdwrocZoom ? 1.f : -1.f) * FUstawienia::ZoomMn); }
 
 void AKameraMapy::Zoom(float Kroki)
 {
@@ -62,7 +66,7 @@ void AKameraMapy::Zoom(float Kroki)
 			GM->WyjdzZRegionu();
 			return;
 		}
-		CelOdl = FMath::Clamp(CelOdl * FMath::Pow(KrokKolka, -Kroki), MinOdlRegionu, MaxOdlRegionu);
+		CelOdl = FMath::Clamp(CelOdl * FMath::Pow(KrokKolka, -Kroki), MinRegionu(), MaxOdlRegionu);
 	}
 	else
 	{
@@ -89,9 +93,9 @@ void AKameraMapy::UstawRegion(bool bWlacz, FVector2D Srodek)
 	{
 		Focus = FVector(Srodek, Focus.Z);
 		// Ta sama odleglosc co na mapie papierowej tuz przed wejsciem (dawniej staly ProgRegionu = skok kadru).
-		Odl = FMath::Clamp(Odl, MinOdlRegionu, MaxOdlRegionu);
-		CelOdl = FMath::Clamp(CelOdl, MinOdlRegionu, MaxOdlRegionu);
-		Yaw = CelYaw = FMath::RoundToFloat(Yaw / 90.f) * 90.f;
+		Odl = FMath::Clamp(Odl, MinRegionu(), MaxOdlRegionu);
+		CelOdl = FMath::Clamp(CelOdl, MinRegionu(), MaxOdlRegionu);
+		CelYaw = Yaw; // dowolny kat (obrot 360 st.)
 	}
 	else
 	{
@@ -101,6 +105,12 @@ void AKameraMapy::UstawRegion(bool bWlacz, FVector2D Srodek)
 	}
 	// Wysokosc terenu zmienia sie przy przelaczeniu (przesada rzezby w regionie): ognisko od razu na nowym terenie, bez dryfu kadru.
 	Focus.Z = Ziemia(Focus.X, Focus.Y);
+}
+
+void AKameraMapy::UstawOgnisko(FVector2D Gdzie)
+{
+	bZoomDoPunktu = false;
+	Focus = FVector(Gdzie, Ziemia(Gdzie.X, Gdzie.Y));
 }
 
 float AKameraMapy::Ziemia(double X, double Y) const
@@ -153,7 +163,25 @@ void AKameraMapy::Tick(float DeltaSeconds)
 	}
 
 	// Przeciaganie mapy (lewy albo srodkowy przycisk): chwycony punkt jedzie za kursorem.
-	const bool bTrzyma = PC->IsInputKeyDown(EKeys::LeftMouseButton) || PC->IsInputKeyDown(EKeys::MiddleMouseButton);
+	const bool bTrzyma = (PC->IsInputKeyDown(EKeys::LeftMouseButton) && !bBezLewegoPrzeciagania)
+		|| (PC->IsInputKeyDown(EKeys::MiddleMouseButton) && bBezLewegoPrzeciagania);
+	// Srodkowy przycisk poza bitwa: przeciaganie w bok obraca kamere wokol punktu ogniska (360 st.).
+	float MX = 0.f, MY = 0.f;
+	PC->GetMousePosition(MX, MY);
+	if (PC->IsInputKeyDown(EKeys::MiddleMouseButton) && !bBezLewegoPrzeciagania)
+	{
+		if (bObracaMysza)
+		{
+			CelYaw += (MX - MyszX) * ObrotMyszy * FUstawienia::MyszMn * (FUstawienia::bOdwrocObrot ? -1.f : 1.f);
+		}
+		bObracaMysza = true;
+		bZoomDoPunktu = false;
+	}
+	else
+	{
+		bObracaMysza = false;
+	}
+	MyszX = MX;
 	if (bTrzyma)
 	{
 		FVector Teraz;
@@ -179,28 +207,28 @@ void AKameraMapy::Tick(float DeltaSeconds)
 
 	// Klawisze.
 	FVector2D Ruch = FVector2D::ZeroVector;
-	if (PC->IsInputKeyDown(EKeys::W) || PC->IsInputKeyDown(EKeys::Up))    { Ruch.Y += 1.f; }
-	if (PC->IsInputKeyDown(EKeys::S) || PC->IsInputKeyDown(EKeys::Down))  { Ruch.Y -= 1.f; }
-	if (PC->IsInputKeyDown(EKeys::D) || PC->IsInputKeyDown(EKeys::Right)) { Ruch.X += 1.f; }
-	if (PC->IsInputKeyDown(EKeys::A) || PC->IsInputKeyDown(EKeys::Left))  { Ruch.X -= 1.f; }
-	if (bRegion)
-	{
-		Yaw = FMath::FInterpTo(Yaw, CelYaw, DeltaSeconds, 8.f); // obrot skokami po 90 st.
-	}
-	else
-	{
-		if (PC->IsInputKeyDown(EKeys::Q)) { Yaw -= PredkoscObrotu * DeltaSeconds; }
-		if (PC->IsInputKeyDown(EKeys::E)) { Yaw += PredkoscObrotu * DeltaSeconds; }
-		CelYaw = Yaw;
-	}
+	if (PC->IsInputKeyDown(FUstawienia::Klawisz("Przod")) || PC->IsInputKeyDown(EKeys::Up))    { Ruch.Y += 1.f; }
+	if (PC->IsInputKeyDown(FUstawienia::Klawisz("Tyl")) || PC->IsInputKeyDown(EKeys::Down))  { Ruch.Y -= 1.f; }
+	if (PC->IsInputKeyDown(FUstawienia::Klawisz("Prawo")) || PC->IsInputKeyDown(EKeys::Right)) { Ruch.X += 1.f; }
+	if (PC->IsInputKeyDown(FUstawienia::Klawisz("Lewo")) || PC->IsInputKeyDown(EKeys::Left))  { Ruch.X -= 1.f; }
+	// Q/E: plynny obrot o dowolny kat (wszedzie); mysz srodkowym przyciskiem dodaje do CelYaw, wygladzane.
+	if (PC->IsInputKeyDown(FUstawienia::Klawisz("ObrotL"))) { CelYaw -= PredkoscObrotu * FUstawienia::ObrotMn * DeltaSeconds; }
+	if (PC->IsInputKeyDown(FUstawienia::Klawisz("ObrotP"))) { CelYaw += PredkoscObrotu * FUstawienia::ObrotMn * DeltaSeconds; }
+	Yaw = FMath::FInterpTo(Yaw, CelYaw, DeltaSeconds, 12.f);
+	// Lagodny start i hamowanie (ok. 0,15 s) zamiast szarpniecia przy wcisnieciu i puszczeniu klawisza.
+	const float Szybko = PC->IsInputKeyDown(FUstawienia::Klawisz("Szybciej")) ? 3.f : 1.f;
+	RuchGladki = FMath::Vector2DInterpTo(RuchGladki, Ruch.GetClampedToMaxSize(1.0) * Szybko, DeltaSeconds, 8.f);
 	if (!Ruch.IsNearlyZero())
 	{
-		const float Szybko = PC->IsInputKeyDown(EKeys::LeftShift) ? 3.f : 1.f;
-		const FRotator R(0.f, Yaw, 0.f);
-		const FVector Krok = (R.RotateVector(FVector::ForwardVector) * Ruch.Y + R.RotateVector(FVector::RightVector) * Ruch.X).GetClampedToMaxSize(1.0);
-		const float Tempo = Odl * PredkoscPrzesuwu * Szybko;
-		Focus += Krok * (bRegion ? FMath::Min(Tempo, MaxPrzesuwRegionu) : Tempo) * DeltaSeconds;
 		bZoomDoPunktu = false;
+	}
+	if (!RuchGladki.IsNearlyZero(0.01))
+	{
+		const FRotator R(0.f, Yaw, 0.f);
+		const float Sila = RuchGladki.Size();
+		const FVector Kier = (R.RotateVector(FVector::ForwardVector) * RuchGladki.Y + R.RotateVector(FVector::RightVector) * RuchGladki.X) / Sila;
+		const float Tempo = Odl * PredkoscPrzesuwu * FUstawienia::PrzesuwMn * Sila;
+		Focus += Kier * (bRegion ? FMath::Min(Tempo, MaxPrzesuwRegionu * FMath::Min(Sila, 1.f)) : Tempo) * DeltaSeconds;
 	}
 
 	// Mapa grywalna: jazda po calej Europie, tylko z dala od krawedzi swiata (tam konczy sie teren).
@@ -227,14 +255,17 @@ void AKameraMapy::UstawPiksele()
 	}
 	bPiksele = bChce;
 	bPikseleUstawione = true;
+	// Bez migotania (22.11.2026): TSR zawsze. Piksele robi drugie skalowanie: TSR wygladza obraz w 50%
+	// rozdzielczosci, a potem najblizszy sasiad (r.Upscale.Quality=0) powieksza go x2. Wczesniej render 50% bez AA
+	// migotal na drzewach, trawie i krawedziach przy kazdym ruchu kamery.
 	IConsoleManager& CM = IConsoleManager::Get();
-	if (IConsoleVariable* SP = CM.FindConsoleVariable(TEXT("r.ScreenPercentage")))
+	// Skala renderu i metoda wygladzania z ustawien gracza (domyslnie 100% i TSR).
+	FUstawienia::ZastosujObraz();
+	if (IConsoleVariable* SP2 = CM.FindConsoleVariable(TEXT("r.SecondaryScreenPercentage.GameViewport")))
 	{
-		SP->Set(bPiksele ? 50.f : 100.f, ECVF_SetByCode);
-	}
-	if (IConsoleVariable* AA = CM.FindConsoleVariable(TEXT("r.AntiAliasingMethod")))
-	{
-		AA->Set(bPiksele ? 0 : 4, ECVF_SetByCode); // 0 = bez AA, 4 = TSR
+		// Uzytkownik (22.11.2026): piksele 50% z TSR "za bardzo rozmazane" - pelna rozdzielczosc, ostrosc z r.Tonemapper.Sharpen.
+		// Powrot do pikseli: bPiksele ? 50.f : 0.f.
+		SP2->Set(0.f, ECVF_SetByCode); // 0 = bez drugiego skalowania
 	}
 }
 

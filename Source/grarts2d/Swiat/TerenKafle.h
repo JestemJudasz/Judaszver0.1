@@ -42,6 +42,31 @@ public:
 
 	bool WRegionie() const { return bRegion; }
 
+	/** Mapa grywalna: usuwa drzewa, krzaki i drobiazgi w kole (cm) - pod budynkiem. Kafle liczone pozniej tez je pomijaja. */
+	void Wykarczuj(FVector2D Srodek, float Promien);
+
+	// --- Las dla ekonomii (chata drwala, chata borowego) ---
+	/** Najblizsze dorosle drzewo (nie krzak, nie rosnaca sadzonka) w kole; pomija drzewa blizej niz 1 m od punktow Pomin. */
+	bool ZnajdzDrzewo(FVector2D Srodek, float Promien, const TArray<FVector2D>& Pomin, FVector2D& Out) const;
+	/** Scina drzewo stojace w punkcie (najblizsze w 1,5 m); nie odrasta po ponownym wczytaniu kafla. */
+	bool Zetnij(FVector2D Gdzie);
+	/** Czy w kole stoi drzewo, krzak albo sadzonka (borowy nie sadzi za gesto). */
+	bool DrzewoBlisko(FVector2D Gdzie, float Promien) const;
+	/** Mlode drzewo borowego: rosnie CzasWzrostu sekund, potem drwal moze je sciac. */
+	void Zasadz(FVector2D Gdzie);
+	/** Etap 2 (zbieracz): najblizszy krzak w kole, pomija krzaki blizej niz 1 m od punktow Pomin (zerwane, zajete). */
+	bool ZnajdzKrzak(FVector2D Srodek, float Promien, const TArray<FVector2D>& Pomin, FVector2D& Out) const;
+	/** Etap 2 (mysliwy): ile doroslych drzew stoi w kole (gestosc lasu). */
+	int32 DrzewWKole(FVector2D Srodek, float Promien) const;
+	/** Ile sadzonek jeszcze rosnie w kole. */
+	int32 Sadzonek(FVector2D Srodek, float Promien) const;
+	/** Wzrost sadzonek (sekundy gry, razy tempo budowy). Wola AOsada. */
+	void Rosnij(float Sekundy);
+
+	/** Sekundy od posadzenia do doroslego drzewa. */
+	UPROPERTY(EditAnywhere, Category = "Natura")
+	float CzasWzrostu = 240.f;
+
 	/** Ile kafli 512 m w kazda strone od kafla pod ogniskiem kamery (5 = 11x11 kafli, >= 2,5 km; przy max oddaleniu rog kadru ~1,6 km). */
 	UPROPERTY(EditAnywhere, Category = "Region")
 	int32 PromienRegionu = 5;
@@ -138,6 +163,35 @@ private:
 	/** Kafle poza regionem: M_Teren z parametrami mapy strategicznej (Mapa, SkalaMapy) ustawianymi co klatke. */
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> MaterialMapy;
+
+	/** Wykarczowane kola: X, Y, promien (cm). */
+	TArray<FVector> Polany;
+	/** Polany w komorkach 50 m (23.11.2026: osady rodow karczuja setki kol, NaPolanie sprawdza tylko swoja komorke). */
+	TMap<FIntPoint, TArray<int32>> PolanyKomorki;
+	static constexpr double KomorkaPolan = 5000.0;
+	/** Dopisuje polane do listy i komorek; false = lezy cala w juz wykarczowanej (nic nowego). */
+	bool DodajPolane(FVector2D Srodek, float Promien);
+
+	/** Drzewa posadzone przez borowych (nie naleza do kafli, wiec przetrwaja przeladowanie regionu). */
+	struct FSadzonka
+	{
+		FVector2D P;
+		float Wiek = 0.f;
+		float Skala = 1.f;  // docelowa
+		float Obrot = 0.f;
+		int32 Model = 0;
+	};
+	TArray<FSadzonka> Sadzonki;
+
+	/** Instancje sadzonek, po jednym komponencie na model (indeks jak Modele). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> Mlode;
+
+	FTransform TransformSadzonki(const FSadzonka& S) const;
+	void OdbudujMlode(int32 Model);
+	/** Szuka instancji drzewa (bKrzaki: krzaka) z kafli najblizszej punktu (do Zetnij / ZnajdzDrzewo / ZnajdzKrzak); Model < 0 = brak. */
+	bool NajblizszeZKafli(FVector2D Srodek, float Promien, const TArray<FVector2D>* Pomin, UInstancedStaticMeshComponent*& Komp, int32& Indeks, FVector2D& Gdzie, bool bKrzaki = false) const;
+	bool NaPolanie(double X, double Y) const;
 
 	TMap<FIntVector, FKafel> Kafle;
 	TArray<FIntVector> Chciane; // kafle dla obecnego widoku (z ostatniego Odswiez)

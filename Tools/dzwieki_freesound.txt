@@ -1,0 +1,37 @@
+# Nagrania CC0 z Freesound (podglad HQ MP3, pobrane 23.11.2026 za zgoda uzytkownika). Kolumny: id|user_id|autor|tytul
+# Pobiera i tnie Tools/dzwieki_glosy.py. Kazde jest tez w Docs/Assety_zrodla.md.
+563011|6253486|florianreichelt|People screaming in agony when charging into battle
+521830|3718141|joelcarrsound|Middle Ages War Cry
+521831|3718141|joelcarrsound|Middle Ages War Cry 3
+521832|3718141|joelcarrsound|Middle Ages War Cry 2
+764158|11744683|ShangusBurger|CRWDBatl_Crowd Yells Charge, Continues
+486193|2524442|craigsmith|R21-07-Men Yelling While Fighting
+384401|3252134|FillMat|Crowd/Mob/Riot Noise (Voices Only) - 14 people, 2 minutes
+416838|8247784|tonsil5|Grunt2 - Death Pain
+416839|8247784|tonsil5|Grunt1 - Death Pain
+556976|12497831|marc3122|Male Screams [1]
+255322|1766049|waxsocks|Groans and Screams
+610998|1038806|unfa|Medium Male Pain Grunts
+103072|1045209|iggy1345|groans
+264062|2971294|Paul368|Melee Weapon hit with male moan & body fall
+276600|464940|insanity54|body_hit
+259542|2316086|nicktermer|stabs
+460509|6253486|florianreichelt|Hitting in a Face
+588278|6461270|marchelonia|heavy sword against sword or shield
+400188|797936|opriema|thud_me
+753925|13504080|xkeril|Axe chopping wood
+419928|8373708|14FPanskaSilovsky_Petr|Chopping wood
+421928|8090574|micahlg|Chopping wood 01
+421929|8090574|micahlg|Chopping wood 02
+233630|3610778|abstraktgeneriert|Pickaxe #2
+760567|14357801|NoisyRedFox|Pickaxe3
+431019|5635287|CamoMano|Stone hit
+184383|71257|qubodup|Gathering Stone Resources
+383725|7146007|deleted_user_7146007|Hand Saw Sawing Wood
+321889|5503971|Duasun|Hammer and anvil
+434339|6599148|draftcraft|Hammer hitting an anvil
+363169|5487341|SamsterBirdies|Hammering on Anvil
+394891|7480625|Ryujin95|hammer pounding on wood
+204946|850742|CapsLok|Hammering_Wood
+578072|5020041|ramonmineiro|medieval_village_atmosphere
+473586|9159316|Breviceps|People talking (Adults & Children)

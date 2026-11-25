@@ -1,6 +1,8 @@
 // Plik: Source/grarts2d/Kamera/KameraMapy.h
 // Kamera jak w Google Maps: kolko przybliza/oddala do punktu pod kursorem (od 25 m do calej Europy),
-// przeciaganie lewym/srodkowym przyciskiem przesuwa mape, WASD/strzalki przesuwaja, Q/E obracaja.
+// przeciaganie lewym przyciskiem przesuwa mape, WASD/strzalki przesuwaja, Q/E obracaja plynnie o dowolny kat (21.11.2026:
+// takze na mapie grywalnej, wczesniej skokami po 90 st.), przeciaganie srodkowym przyciskiem w bok obraca kamere
+// (w bitwie srodkowy przesuwa mape, bo lewy zaznacza oddzialy).
 // Blisko patrzy ukosnie jak mapa grywalna (38 st.), z daleka prostuje sie do widoku mapy z gory.
 // Podstawa: TotalFornt/Camera/RTSCameraPawn (uproszczona, bez Enhanced Input).
 #pragma once
@@ -18,6 +20,18 @@ class GRARTS2D_API AKameraMapy : public APawn
 
 public:
 	AKameraMapy();
+
+	/** Bitwa: lewy przycisk zaznacza oddzialy ramka, mape przesuwa wtedy tylko srodkowy (ABitwa). */
+	static bool bBezLewegoPrzeciagania;
+	/** Bitwa na mapie grywalnej: kamera moze zjechac nizej (do ~80 m), zeby bylo widac wojow z bliska (prosba 21.11.2026). */
+	static bool bBitwaBlisko;
+	float MinRegionu() const { return bBitwaBlisko ? FMath::Min(MinOdlRegionu, 8000.f) : MinOdlRegionu; }
+	/** Odleglosc kamery od razu (zrzuty kontrolne bitwy). */
+	void UstawOdl(float O) { Odl = CelOdl = O; }
+	/** Dla dzwieku (UDzwieki): punkt na ziemi, na ktory patrzy kamera, jej oddalenie (cm) i czy to mapa grywalna. */
+	FVector Ognisko() const { return Focus; }
+	float Oddalenie() const { return Odl; }
+	bool WRegionie() const { return bRegion; }
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -102,6 +116,9 @@ public:
 	/** Wlacza / wylacza tryb mapy grywalnej (wola ASwiatGameMode); Srodek = gdzie stanac po wejsciu. */
 	void UstawRegion(bool bWlacz, FVector2D Srodek);
 
+	/** Przenosi kamere nad punkt (bez zmiany oddalenia), np. do pokazu budynkow na zrzucie kontrolnym. */
+	void UstawOgnisko(FVector2D Gdzie);
+
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Kamera")
 	TObjectPtr<UCameraComponent> Kamera;
@@ -109,8 +126,14 @@ protected:
 private:
 	void KolkoW();
 	void KolkoZ();
-	void ObrotL() { CelYaw -= 90.f; }
-	void ObrotP() { CelYaw += 90.f; }
+	void ObrotL() {}
+	void ObrotP() {}
+	/** Obrot srodkowym przyciskiem: st. na piksel ruchu myszy. */
+	float ObrotMyszy = 0.35f;
+	bool bObracaMysza = false;
+	float MyszX = 0.f;
+	/** WASD wygladzone (22.11.2026): kamera rusza i hamuje lagodnie (x = prawo, y = przod, z Shiftem do 3). */
+	FVector2D RuchGladki = FVector2D::ZeroVector;
 
 	bool bRegion = false;
 	float CelYaw = 0.f;

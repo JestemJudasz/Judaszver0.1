@@ -458,13 +458,32 @@ void ATerenKafle::Tick(float DeltaSeconds)
 			Drz->SetStaticMesh(Modele[i]);
 			// Kepki trawy bez cienia: setki tysiecy drobiazgow zapchalyby pamiec cieni (VSM) - cienie urywaly sie juz przy samych drzewach.
 			Drz->SetCastShadow(i / 2 != Trawa);
+			// Wiatr (WPO w M_Natura*, 21.11.2026) tylko do 600 m od kamery: dalej ruchu i tak nie widac, a kazde ruszane
+			// drzewo kosztuje (Nanite + odswiezanie cieni VSM).
+			Drz->WorldPositionOffsetDisableDistance = 60000;
 			if (i / 2 == Trawa || i / 2 == Kamien)
 			{
 				Drz->SetCullDistances(0, int32(ZasiegDrobnych));
 			}
 			Drz->RegisterComponent();
 			Drz->SetWorldLocation(FVector(B.Min.X, B.Min.Y, 0.0));
-			Drz->AddInstances(D->Drzewa[i], false, false, false);
+			if (Polany.Num() == 0)
+			{
+				Drz->AddInstances(D->Drzewa[i], false, false, false);
+			}
+			else
+			{
+				TArray<FTransform> Zostaja;
+				Zostaja.Reserve(D->Drzewa[i].Num());
+				for (const FTransform& T : D->Drzewa[i])
+				{
+					if (!NaPolanie(B.Min.X + T.GetLocation().X, B.Min.Y + T.GetLocation().Y))
+					{
+						Zostaja.Add(T);
+					}
+				}
+				Drz->AddInstances(Zostaja, false, false, false);
+			}
 			Kaf.Drzewa.Add(Drz);
 		}
 		Kaf.bGotowy = true;
@@ -509,6 +528,367 @@ void ATerenKafle::Tick(float DeltaSeconds)
 	}
 }
 
+bool ATerenKafle::NaPolanie(double X, double Y) const
+{
+	const TArray<int32>* W = PolanyKomorki.Find(FIntPoint(FMath::FloorToInt32(X / KomorkaPolan), FMath::FloorToInt32(Y / KomorkaPolan)));
+	if (!W)
+	{
+		return false;
+	}
+	for (const int32 i : *W)
+	{
+		const FVector& P = Polany[i];
+		if (FMath::Square(X - P.X) + FMath::Square(Y - P.Y) < FMath::Square(P.Z))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool ATerenKafle::DodajPolane(FVector2D Srodek, float Promien)
+{
+	const FIntPoint K(FMath::FloorToInt32(Srodek.X / KomorkaPolan), FMath::FloorToInt32(Srodek.Y / KomorkaPolan));
+	if (const TArray<int32>* W = PolanyKomorki.Find(K))
+	{
+		for (const int32 i : *W)
+		{
+			if (FVector2D::Distance(FVector2D(Polany[i]), Srodek) + Promien <= Polany[i].Z)
+			{
+				return false;
+			}
+		}
+	}
+	const int32 Nowa = Polany.Add(FVector(Srodek.X, Srodek.Y, Promien));
+	const int32 X0 = FMath::FloorToInt32((Srodek.X - Promien) / KomorkaPolan), X1 = FMath::FloorToInt32((Srodek.X + Promien) / KomorkaPolan);
+	const int32 Y0 = FMath::FloorToInt32((Srodek.Y - Promien) / KomorkaPolan), Y1 = FMath::FloorToInt32((Srodek.Y + Promien) / KomorkaPolan);
+	for (int32 x = X0; x <= X1; ++x)
+	{
+		for (int32 y = Y0; y <= Y1; ++y)
+		{
+			PolanyKomorki.FindOrAdd(FIntPoint(x, y)).Add(Nowa);
+		}
+	}
+	return true;
+}
+
+void ATerenKafle::Wykarczuj(FVector2D Srodek, float Promien)
+{
+	if (!DodajPolane(Srodek, Promien))
+	{
+		return; // ta sama polana jeszcze raz (osady rodow przy odswiezaniu): drzewa juz wyciete
+	}
+	const FBox2D Kolo(Srodek - FVector2D(Promien), Srodek + FVector2D(Promien));
+	TSet<int32> Zmienione;
+	for (int32 k = Sadzonki.Num() - 1; k >= 0; --k)
+	{
+		if (FVector2D::DistSquared(Sadzonki[k].P, Srodek) < double(Promien) * Promien)
+		{
+			Zmienione.Add(Sadzonki[k].Model);
+			Sadzonki.RemoveAt(k);
+		}
+	}
+	for (int32 M : Zmienione)
+	{
+		OdbudujMlode(M);
+	}
+	for (auto& Para : Kafle)
+	{
+		if (!Obszar(Para.Key).Intersect(Kolo))
+		{
+			continue; // tylko kafle pod polana (wczesniej przegladane wszystkie drzewa wszystkich kafli)
+		}
+		for (UInstancedStaticMeshComponent* Drz : Para.Value.Drzewa)
+		{
+			if (!Drz)
+			{
+				continue;
+			}
+			TArray<int32> Usun;
+			const int32 N = Drz->GetInstanceCount();
+			for (int32 i = 0; i < N; ++i)
+			{
+				FTransform T;
+				if (Drz->GetInstanceTransform(i, T, true) && FVector2D::DistSquared(FVector2D(T.GetLocation()), Srodek) < FMath::Square(Promien))
+				{
+					Usun.Add(i);
+				}
+			}
+			if (Usun.Num())
+			{
+				Drz->RemoveInstances(Usun);
+			}
+		}
+	}
+}
+
+bool ATerenKafle::NajblizszeZKafli(FVector2D Srodek, float Promien, const TArray<FVector2D>* Pomin, UInstancedStaticMeshComponent*& Komp, int32& Indeks, FVector2D& Gdzie, bool bKrzaki) const
+{
+	// Tylko drzewa (gatunki Dab..Swierk = modele 0..9) albo tylko krzaki (bKrzaki), tylko kafle nachodzace na kolo.
+	double Najl = double(Promien) * Promien;
+	Komp = nullptr;
+	Indeks = -1;
+	const FBox2D Kolo(Srodek - FVector2D(Promien), Srodek + FVector2D(Promien));
+	for (const auto& Para : Kafle)
+	{
+		if (!Para.Value.bGotowy || !Obszar(Para.Key).Intersect(Kolo))
+		{
+			continue;
+		}
+		for (UInstancedStaticMeshComponent* Drz : Para.Value.Drzewa)
+		{
+			if (!Drz)
+			{
+				continue;
+			}
+			const int32 Model = Modele.IndexOfByKey(Drz->GetStaticMesh());
+			if (Model < 0 || (bKrzaki ? (Model < Krzak * 2 || Model >= Krzak * 2 + 2) : Model >= Krzak * 2))
+			{
+				continue;
+			}
+			const int32 N = Drz->GetInstanceCount();
+			for (int32 i = 0; i < N; ++i)
+			{
+				FTransform T;
+				if (!Drz->GetInstanceTransform(i, T, true))
+				{
+					continue;
+				}
+				const FVector2D P(T.GetLocation());
+				const double D = FVector2D::DistSquared(P, Srodek);
+				if (D >= Najl)
+				{
+					continue;
+				}
+				bool bPomin = false;
+				if (Pomin)
+				{
+					for (const FVector2D& Q : *Pomin)
+					{
+						bPomin |= FVector2D::DistSquared(Q, P) < 100.0 * 100.0;
+					}
+				}
+				if (!bPomin)
+				{
+					Najl = D;
+					Komp = Drz;
+					Indeks = i;
+					Gdzie = P;
+				}
+			}
+		}
+	}
+	return Komp != nullptr;
+}
+
+bool ATerenKafle::ZnajdzDrzewo(FVector2D Srodek, float Promien, const TArray<FVector2D>& Pomin, FVector2D& Out) const
+{
+	UInstancedStaticMeshComponent* Komp = nullptr;
+	int32 Indeks = -1;
+	FVector2D Gdzie = FVector2D::ZeroVector;
+	bool bJest = NajblizszeZKafli(Srodek, Promien, &Pomin, Komp, Indeks, Gdzie);
+	double Najl = bJest ? FVector2D::DistSquared(Gdzie, Srodek) : double(Promien) * Promien;
+	for (const FSadzonka& S : Sadzonki)
+	{
+		if (S.Wiek < CzasWzrostu)
+		{
+			continue;
+		}
+		const double D = FVector2D::DistSquared(S.P, Srodek);
+		bool bPomin = false;
+		for (const FVector2D& Q : Pomin)
+		{
+			bPomin |= FVector2D::DistSquared(Q, S.P) < 100.0 * 100.0;
+		}
+		if (D < Najl && !bPomin)
+		{
+			Najl = D;
+			Gdzie = S.P;
+			bJest = true;
+		}
+	}
+	if (bJest)
+	{
+		Out = Gdzie;
+	}
+	return bJest;
+}
+
+bool ATerenKafle::ZnajdzKrzak(FVector2D Srodek, float Promien, const TArray<FVector2D>& Pomin, FVector2D& Out) const
+{
+	UInstancedStaticMeshComponent* Komp = nullptr;
+	int32 Indeks = -1;
+	return NajblizszeZKafli(Srodek, Promien, &Pomin, Komp, Indeks, Out, true);
+}
+
+int32 ATerenKafle::DrzewWKole(FVector2D Srodek, float Promien) const
+{
+	int32 N = 0;
+	const FBox2D Kolo(Srodek - FVector2D(Promien), Srodek + FVector2D(Promien));
+	for (const auto& Para : Kafle)
+	{
+		if (!Para.Value.bGotowy || !Obszar(Para.Key).Intersect(Kolo))
+		{
+			continue;
+		}
+		for (UInstancedStaticMeshComponent* Drz : Para.Value.Drzewa)
+		{
+			const int32 Model = Drz ? Modele.IndexOfByKey(Drz->GetStaticMesh()) : -1;
+			if (Model < 0 || Model >= Krzak * 2)
+			{
+				continue;
+			}
+			for (int32 i = 0, Ile = Drz->GetInstanceCount(); i < Ile; ++i)
+			{
+				FTransform T;
+				if (Drz->GetInstanceTransform(i, T, true) && FVector2D::DistSquared(FVector2D(T.GetLocation()), Srodek) < double(Promien) * Promien)
+				{
+					++N;
+				}
+			}
+		}
+	}
+	for (const FSadzonka& S : Sadzonki)
+	{
+		N += (S.Wiek >= CzasWzrostu && FVector2D::DistSquared(S.P, Srodek) < double(Promien) * Promien) ? 1 : 0;
+	}
+	return N;
+}
+
+bool ATerenKafle::Zetnij(FVector2D Gdzie)
+{
+	for (int32 k = 0; k < Sadzonki.Num(); ++k)
+	{
+		if (Sadzonki[k].Wiek >= CzasWzrostu && FVector2D::DistSquared(Sadzonki[k].P, Gdzie) < 150.0 * 150.0)
+		{
+			const int32 Model = Sadzonki[k].Model;
+			Sadzonki.RemoveAt(k);
+			OdbudujMlode(Model);
+			return true;
+		}
+	}
+	UInstancedStaticMeshComponent* Komp = nullptr;
+	int32 Indeks = -1;
+	FVector2D P = FVector2D::ZeroVector;
+	if (!NajblizszeZKafli(Gdzie, 150.f, nullptr, Komp, Indeks, P))
+	{
+		return false;
+	}
+	Komp->RemoveInstance(Indeks);
+	DodajPolane(P, 60.f); // kafel liczony od nowa nie postawi go z powrotem
+	return true;
+}
+
+bool ATerenKafle::DrzewoBlisko(FVector2D Gdzie, float Promien) const
+{
+	for (const FSadzonka& S : Sadzonki)
+	{
+		if (FVector2D::DistSquared(S.P, Gdzie) < double(Promien) * Promien)
+		{
+			return true;
+		}
+	}
+	UInstancedStaticMeshComponent* Komp = nullptr;
+	int32 Indeks = -1;
+	FVector2D P = FVector2D::ZeroVector;
+	return NajblizszeZKafli(Gdzie, Promien, nullptr, Komp, Indeks, P);
+}
+
+FTransform ATerenKafle::TransformSadzonki(const FSadzonka& S) const
+{
+	// Od 12% do pelnej wielkosci; osadzenie w ziemi jak w Sadz (Z - 30 * skala).
+	const float T = FMath::Clamp(S.Wiek / FMath::Max(1.f, CzasWzrostu), 0.f, 1.f);
+	const float Sk = S.Skala * FMath::Lerp(0.12f, 1.f, T);
+	const float Z = FSwiat::Wysokosc(S.P.X, S.P.Y);
+	return FTransform(FRotator(0.f, S.Obrot, 0.f), FVector(S.P, Z - 30.f * Sk), FVector(Sk));
+}
+
+void ATerenKafle::OdbudujMlode(int32 Model)
+{
+	if (!Modele.IsValidIndex(Model) || !Modele[Model])
+	{
+		return;
+	}
+	if (Mlode.Num() < Modele.Num())
+	{
+		Mlode.SetNum(Modele.Num());
+	}
+	UInstancedStaticMeshComponent* C = Mlode[Model];
+	if (!C)
+	{
+		C = NewObject<UInstancedStaticMeshComponent>(this);
+		C->SetupAttachment(RootComponent);
+		C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		C->SetStaticMesh(Modele[Model]);
+		C->RegisterComponent();
+		C->SetWorldLocation(FVector::ZeroVector);
+		C->SetVisibility(bRegion);
+		Mlode[Model] = C;
+	}
+	C->ClearInstances();
+	TArray<FTransform> T;
+	for (const FSadzonka& S : Sadzonki)
+	{
+		if (S.Model == Model)
+		{
+			T.Add(TransformSadzonki(S));
+		}
+	}
+	C->AddInstances(T, false, true, false);
+}
+
+void ATerenKafle::Zasadz(FVector2D Gdzie)
+{
+	// Gatunek jak w okolicznym lesie (dab, buk, sosna, swierk; brzoz borowy nie sadzi), losowy wariant.
+	const int32 Gatunki[] = { Dab, Buk, Sosna, Swierk };
+	FSadzonka S;
+	S.P = Gdzie;
+	S.Obrot = FMath::FRand() * 360.f;
+	S.Skala = (0.75f + 0.5f * FMath::FRand()) * SkalaDrzewRegionu;
+	S.Model = -1;
+	for (int32 Proba = 0; Proba < 8 && S.Model < 0; ++Proba)
+	{
+		const int32 M = Gatunki[FMath::RandHelper(4)] * 2 + FMath::RandHelper(2);
+		if (Modele.IsValidIndex(M) && Modele[M])
+		{
+			S.Model = M;
+		}
+	}
+	if (S.Model < 0)
+	{
+		return;
+	}
+	Sadzonki.Add(S);
+	OdbudujMlode(S.Model);
+}
+
+int32 ATerenKafle::Sadzonek(FVector2D Srodek, float Promien) const
+{
+	int32 N = 0;
+	for (const FSadzonka& S : Sadzonki)
+	{
+		N += (S.Wiek < CzasWzrostu && FVector2D::DistSquared(S.P, Srodek) < double(Promien) * Promien) ? 1 : 0;
+	}
+	return N;
+}
+
+void ATerenKafle::Rosnij(float Sekundy)
+{
+	TSet<int32> Zmienione;
+	for (FSadzonka& S : Sadzonki)
+	{
+		if (S.Wiek < CzasWzrostu)
+		{
+			S.Wiek += Sekundy;
+			Zmienione.Add(S.Model);
+		}
+	}
+	for (int32 M : Zmienione)
+	{
+		OdbudujMlode(M);
+	}
+}
+
 void ATerenKafle::Wyczysc()
 {
 	for (auto& Para : Kafle)
@@ -534,6 +914,13 @@ void ATerenKafle::WejdzDoRegionu()
 	Wyczysc();
 	FSwiat::UstawRegion(true); // wyrazniejsza rzezba na mapie grywalnej
 	bRegion = true;
+	for (UInstancedStaticMeshComponent* C : Mlode)
+	{
+		if (C)
+		{
+			C->SetVisibility(true);
+		}
+	}
 }
 
 void ATerenKafle::WyjdzZRegionu()
@@ -541,6 +928,13 @@ void ATerenKafle::WyjdzZRegionu()
 	Wyczysc();
 	FSwiat::UstawRegion(false);
 	bRegion = false;
+	for (UInstancedStaticMeshComponent* C : Mlode)
+	{
+		if (C)
+		{
+			C->SetVisibility(false); // mapa papierowa jest plaska
+		}
+	}
 }
 
 float ATerenKafle::Postep() const

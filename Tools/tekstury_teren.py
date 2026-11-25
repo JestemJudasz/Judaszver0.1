@@ -1,6 +1,7 @@
 # Plik: Tools/tekstury_teren.py
 # Tekstury terenu robione przez AI (bez zewnetrznych obrazkow):
 #   Art/Teren/T_Europa_Kolor.png  8192x8192 - kolor bazowy calej Europy (pokrycie + glebokosc morza), 64 m w grze na piksel
+#   Art/Teren/T_WodaFale.png      512x512, kafelkujaca - normalne fal wody (argument: fale)
 #   Art/Teren/T_Detal.png         512x512, kafelkujaca - szum detalu w 3 kanalach (R drobny, G sredni, B duzy)
 # Paleta zdjeta ze zrzutow referencyjnych (oliwkowe zielenie, zolte laki, wrzosowiska, ciemne lasy).
 import os, sys
@@ -206,6 +207,21 @@ def mapa(n=512, ziarno=31):
     return Image.fromarray(np.stack([r, (g * 255).astype(np.uint8), np.zeros((n, n), np.uint8)], -1))
 
 
+def fale(n=512, ziarno=41):
+    """T_WodaFale: kafelkujaca mapa normalnych fal wody (21.11.2026). Wysokosc = dlugie fale + drobna zmarszczka,
+    pochylenie z roznic sasiadow (np.roll - bez szwow). RG = nachylenie, B = 1 (UE: TC_NORMALMAP)."""
+    h = 0.65 * szum_kafelkujacy(n, 3, 10, ziarno) + 0.35 * szum_kafelkujacy(n, 14, 48, ziarno + 1)
+    # Grzbiety fal ostrzejsze niz doliny (jak na prawdziwej wodzie).
+    h = 1.0 - np.abs(h - 0.5) * 2.0
+    h = h ** 1.6
+    sila = 18.0
+    dx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5 * sila
+    dy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5 * sila
+    nz = 1.0 / np.sqrt(dx * dx + dy * dy + 1.0)
+    rgb = np.stack([-dx * nz, -dy * nz, nz], -1) * 0.5 + 0.5
+    return Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8))
+
+
 def main():
     os.makedirs(ART, exist_ok=True)
     if sys.argv[1:] == ["mapa"]:  # tylko T_Mapa
@@ -217,6 +233,10 @@ def main():
     if sys.argv[1:] == ["trawa"]:  # tylko T_Trawa (bez przeliczania mapy Europy)
         trawa().save(os.path.join(ART, "T_Trawa.png"))
         print("T_Trawa.png")
+        return
+    if sys.argv[1:] == ["fale"]:  # tylko T_WodaFale (fale wody mapy grywalnej)
+        fale().save(os.path.join(ART, "T_WodaFale.png"))
+        print("T_WodaFale.png")
         return
     if sys.argv[1:] == ["woda"]:  # tylko T_Europa_Woda
         woda_europy().save(os.path.join(ART, "T_Europa_Woda.png"))
