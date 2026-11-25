@@ -1514,7 +1514,7 @@ void AOsada::Posilek()
 	}
 	if (Obdarte > 0 && Glodne == 0 && Zimne == 0)
 	{
-		Ogloszenie(Targ() ? FString::Printf(TEXT("Na targu zabrakło ubrań i sukna: %d %s bez nowego ubrania"), Obdarte, Obdarte == 1 ? TEXT("rodzina") : TEXT("rodzin"))
+		Ogloszenie(Targ() ? FString::Printf(TEXT("Na targu zabrakło ubrań i sukna: %d %s bez nowego ubrania"), Obdarte, Obdarte == 1 ? TEXT("rodzina") : (Obdarte < 5 ? TEXT("rodziny") : TEXT("rodzin")))
 			: FString(TEXT("Rodziny potrzebują ubrań: postaw targ, tkacza i krawca")));
 	}
 	UE_LOG(LogTemp, Log, TEXT("Osada: posilek, glodnych rodzin: %d z %d, jedzenia zostalo: %d"), Glodne, Rodziny.Num(), Zapasy()[ESurowiec::Jedzenie]);
@@ -1969,7 +1969,8 @@ TArray<ALudzik*> AOsada::Mezczyzni() const
 	TArray<ALudzik*> Out;
 	for (const TWeakObjectPtr<ALudzik>& L : Ludzie)
 	{
-		if (L.IsValid() && !L->Kobieta() && !L->WBitwie())
+		// Poprawka 25.11.2026: bez mezczyzn odchodzacych z osady (powolany znikal z pola, gdy doszedl na miejsce).
+		if (L.IsValid() && !L->Kobieta() && !L->WBitwie() && !L->Odchodzi())
 		{
 			Out.Add(L.Get());
 		}

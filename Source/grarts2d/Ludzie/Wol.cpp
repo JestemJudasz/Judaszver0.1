@@ -165,11 +165,14 @@ void AWol::Tick(float DtSwiata)
 {
 	Super::Tick(DtSwiata);
 	const float Dt = DtSwiata * ALudzik::TempoOsadnikow;
-	if ((Krok == EKrok::DoZrodla || Krok == EKrok::Laduje) && (!Zrodlo.IsValid() || !Cel.IsValid()))
+	// Poprawka 25.11.2026: budynek, ktory sie zawalil (ruina), tez jest brakiem celu - wczesniej wol zrzucal klody
+	// na ruine i towar przepadal (ludzi zwalnia AOsada::OdlaczBudynek, wolow nie).
+	auto Brak = [](const TWeakObjectPtr<ABudowa>& B) { return !B.IsValid() || B->Ruina() || B->Zgliszcza(); };
+	if ((Krok == EKrok::DoZrodla || Krok == EKrok::Laduje) && (Brak(Zrodlo) || Brak(Cel)))
 	{
 		Porzuc();
 	}
-	else if ((Krok == EKrok::Ciagnie || Krok == EKrok::Zrzuca) && !Cel.IsValid())
+	else if ((Krok == EKrok::Ciagnie || Krok == EKrok::Zrzuca) && Brak(Cel))
 	{
 		Porzuc();
 	}

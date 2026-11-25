@@ -699,7 +699,9 @@ void ABitwa::Odeslij(FWojownik& W)
 	if (W.bZOsady && W.bZyje)
 	{
 		// Z pospolitego ruszenia: wraca do domu i do pracy (zywy, a takze ten, ktory uciekl z pola).
-		if (RodW >= 0)
+		// Poprawka 25.11.2026: takze w drodze powrotnej (MarszW.Etap 3, RodW juz -1): rozwiazany oddzial pojawial sie
+		// pod osada rodu i szedl kilkadziesiat km przez mape.
+		if (RodW >= 0 || (MarszW.Etap == 3 && W.L->IsHidden()))
 		{
 			// z wyprawy: od razu pod oboz (nie idzie kilkudziesieciu km przez mape)
 			const FVector2D G = Dom + FVector2D(FMath::FRandRange(-800.f, 800.f), FMath::FRandRange(-800.f, 800.f));

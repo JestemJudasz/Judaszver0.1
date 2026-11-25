@@ -330,6 +330,12 @@ void ALudzik::Odejdz(FVector2D Gdzie)
 	Przydziel(nullptr, ERolaLudzika::Budowniczy, false);
 	bMaDom = false;
 	bOdchodzi = true;
+	if (bWalka)
+	{
+		// Poprawka 25.11.2026: rodzina odchodzi, a maz walczy - nie schodzi z pola; po bitwie wraca do obozu
+		// (WrocZBitwy, bez domu) i stamtad odchodzi.
+		return;
+	}
 	IdzDo(Gdzie);
 	Status = TEXT("odchodzi z osady");
 }
@@ -2311,7 +2317,7 @@ void ALudzik::Tick(float DtSwiata)
 		}
 		Poz = FVector(Do, FSwiat::Wysokosc(Do.X, Do.Y));
 		SetActorLocation(Poz);
-		if (bDoszedl && bOdchodzi)
+		if (bDoszedl && bOdchodzi && !bWalka) // Poprawka 25.11.2026: w bitwie nie znika (odejdzie po powrocie)
 		{
 			Destroy(); // rodzina odeszla z osady
 			return;

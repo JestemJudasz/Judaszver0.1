@@ -128,6 +128,7 @@ public:
 	void WrocZBitwy();
 	bool Lezy() const { return Stan == EStan::Lezy; }
 	bool WBitwie() const { return bWalka; }
+	bool Odchodzi() const { return bOdchodzi; }
 	bool Uderza() const { return bWalka && Stan == EStan::Pracuje; }
 	bool WRuchu() const { return Stan == EStan::Idzie; }
 	/** Omijanie budynkow dla trasy Pkt (ostatni = cel) z zapasem Zapas cm wokol obrysow (marsz oddzialu w bitwie). */
