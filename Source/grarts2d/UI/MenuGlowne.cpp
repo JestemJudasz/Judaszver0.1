@@ -3,6 +3,9 @@
 #include "UI/Ustawienia.h"
 #include "UI/StylUI.h"
 #include "Gra/ZapisGry.h"
+#include "Siec/Lacze.h"
+#include "Siec/GraczZdalny.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -179,6 +182,8 @@ void SMenuGlowne::PokazGlowne()
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(bStart ? TEXT("Nowa gra") : TEXT("Kontynuuj"), []() { Zamknij(); })]
 				+ SVerticalBox::Slot().AutoHeight()[bStart ? SNullWidget::NullWidget : TSharedRef<SWidget>(Przycisk(TEXT("Zapisz grę"), [this]() { StatusSlotow.Empty(); PokazSloty(true); }))]
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Wczytaj grę"), [this]() { StatusSlotow.Empty(); PokazSloty(false); }, FZapisGry::JakisZapis(), TEXT("Brak zapisów"))]
+				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Gra w sieci"), [this]() { StatusSieci.Empty(); PokazSiec(); }, true,
+					TEXT("Dwóch graczy w jednej sieci (Radmin VPN, Hamachi, LAN): każdy ma swoją osadę na tej samej mapie"))]
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Ustawienia"), [this]() { PokazUstawienia(0); })]
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Wyjście"), [W]()
 				{
@@ -262,6 +267,110 @@ void SMenuGlowne::PokazSloty(bool bZapis)
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
 				[
 					SNew(SBox).WidthOverride(160.f)[Guzik(TEXT("Wróć"), [this]() { PokazGlowne(); })]
+				]
+			]
+		]);
+}
+
+void SMenuGlowne::PokazSiec()
+{
+	Zakladka = 11;
+	CzekaNa = NAME_None;
+	static FSlateRoundedBoxBrush Tlo(StylUI::Tlo, 6.f, StylUI::Ramka, 1.f);
+	static FString Adres = FLacze::OstatniAdres();
+	const TArray<FString> Moje = FPolaczenie::MojeAdresy();
+	const FString MojeT = Moje.Num() > 0 ? FString::Join(Moje, TEXT(",  ")) : FString(TEXT("brak (komputer nie jest w żadnej sieci)"));
+	auto Pole = [](const FString& Start, const FString& Podp, TFunction<void(const FString&)> Zmiana)
+	{
+		return SNew(SEditableTextBox).Text(FText::FromString(Start)).HintText(FText::FromString(Podp)).Font(Czcionka(12))
+			.OnTextChanged_Lambda([Zmiana](const FText& T) { Zmiana(T.ToString()); });
+	};
+	auto Szeroki = [this](const FString& T, TFunction<void()> A, const FString& P = FString())
+	{
+		return SNew(SBox).HeightOverride(40.f)[Guzik(T, A, true, P)];
+	};
+	Miejsce->SetContent(
+		SNew(SBox).HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(FMargin(90.f, 0.f, 0.f, 0.f))
+		[
+			SNew(SBorder).BorderImage(&Tlo).Padding(FMargin(28.f, 24.f))
+			[
+				SNew(SBox).WidthOverride(560.f)
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)
+					[
+						SNew(STextBlock).Text(FText::FromString(TEXT("GRA W SIECI"))).Font(Czcionka(18, true)).ColorAndOpacity(StylUI::Zloto)
+					]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						Uwaga(TEXT("Dwóch graczy w jednej sieci: w domu (LAN) albo przez Radmin VPN lub Hamachi. Każdy ma swoją osadę na tej samej "
+							"mapie Europy, widzicie swoje osady, piszecie na czacie i wysyłacie sobie dary. Jeden klika „Hostuj”, drugi wpisuje jego "
+							"adres i klika „Dołącz”. Obaj muszą mieć tę samą wersję gry. Załóżcie obozy co najmniej 3 km od siebie."))
+					]
+					+ SVerticalBox::Slot().AutoHeight()[Naglowek(TEXT("Twoje imię (widzi je kolega)"))]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						Pole(AGraczZdalny::MojeImie(), TEXT("np. Mieszko"), [](const FString& T) { AGraczZdalny::UstawImie(T); })
+					]
+					+ SVerticalBox::Slot().AutoHeight()[Naglowek(TEXT("1. Hostujesz: podaj koledze swój adres"))]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(STextBlock).Text(FText::FromString(MojeT)).Font(Czcionka(12, true)).ColorAndOpacity(StylUI::Napis).AutoWrapText(true)
+					]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						Uwaga(TEXT("Radmin VPN: adres zaczyna się od 26., Hamachi: od 25. Przy pierwszym hostowaniu zapora Windows zapyta o zgodę: zezwól."))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
+					[
+						Szeroki(TEXT("Hostuj (czekaj na kolegę)"), [this]()
+						{
+							FString Blad;
+							StatusSieci = FLacze::Glowne().Hostuj(Blad) ? FString() : Blad;
+						}, TEXT("Port 7777"))
+					]
+					+ SVerticalBox::Slot().AutoHeight()[Naglowek(TEXT("2. Dołączasz: wpisz adres kolegi"))]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().FillWidth(1.f).Padding(0.f, 0.f, 8.f, 0.f).VAlign(VAlign_Center)
+						[
+							Pole(Adres, TEXT("np. 26.10.20.5"), [](const FString& T) { Adres = T; })
+						]
+						+ SHorizontalBox::Slot().AutoWidth()
+						[
+							SNew(SBox).WidthOverride(160.f)[Szeroki(TEXT("Dołącz"), [this]()
+							{
+								FString Blad;
+								FLacze::ZapamietajAdres(Adres);
+								StatusSieci = FLacze::Glowne().Dolacz(Adres, Blad) ? FString() : Blad;
+							})]
+						]
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 14.f, 0.f, 4.f)
+					[
+						SNew(STextBlock).Font(Czcionka(12, true)).ColorAndOpacity(StylUI::Zloto).AutoWrapText(true)
+						.Text_Lambda([this]() { return FText::FromString(StatusSieci.IsEmpty() ? FLacze::Glowne().Opis() : StatusSieci); })
+					]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						Uwaga(bStart ? TEXT("Po połączeniu wróć i kliknij „Nowa gra” albo wczytaj zapis. Połączenie zostaje.") : TEXT("Połączenie zostaje po powrocie do gry."))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 12.f, 0.f, 0.f)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 8.f, 0.f)
+						[
+							SNew(SBox).WidthOverride(160.f)
+							.Visibility_Lambda([]() { return FLacze::Glowne().Stan() != FPolaczenie::EStan::Brak ? EVisibility::Visible : EVisibility::Collapsed; })
+							[Guzik(TEXT("Rozłącz"), [this]() { FLacze::Glowne().Rozlacz(TEXT("Rozłączono.")); StatusSieci.Empty(); })]
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.f)[SNullWidget::NullWidget]
+						+ SHorizontalBox::Slot().AutoWidth()
+						[
+							SNew(SBox).WidthOverride(160.f)[Guzik(TEXT("Wróć"), [this]() { PokazGlowne(); })]
+						]
+					]
 				]
 			]
 		]);

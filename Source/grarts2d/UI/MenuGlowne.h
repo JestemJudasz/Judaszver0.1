@@ -35,6 +35,9 @@ private:
 	void PokazUstawienia(int32 Zakladka);
 	/** Zapis gry (P4): lista slotow do zapisu (bZapis) albo wczytania. */
 	void PokazSloty(bool bZapis);
+	/** Gra w sieci (M1, 26.11.2026): imie, adresy tego komputera, Hostuj, Dolacz po adresie IP, Rozlacz. */
+	void PokazSiec();
+	FString StatusSieci;
 	FString StatusSlotow;
 	TSharedRef<SWidget> Grafika();
 	TSharedRef<SWidget> Dzwiek();

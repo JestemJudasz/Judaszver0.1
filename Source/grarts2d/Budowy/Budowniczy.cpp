@@ -17,6 +17,7 @@
 #include "Kamera/KameraMapy.h"
 #include "Wojna/Bitwa.h"
 #include "Wojna/OknoWojska.h"
+#include "Siec/GraczZdalny.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -88,6 +89,11 @@ void ABudowniczy::BeginPlay()
 	Rody = GetWorld()->SpawnActor<ARody>(FVector::ZeroVector, FRotator::ZeroRotator, P);
 	Bitwa = GetWorld()->SpawnActor<ABitwa>(FVector::ZeroVector, FRotator::ZeroRotator, P);
 	Drogi = GetWorld()->SpawnActor<ADrogi>(FVector::ZeroVector, FRotator::ZeroRotator, P);
+	// Gra w sieci (M1, 26.11.2026): lacze z drugim graczem i widok jego osady (Siec/GraczZdalny.h).
+	if (AGraczZdalny* Siec = GetWorld()->SpawnActor<AGraczZdalny>(FVector::ZeroVector, FRotator::ZeroRotator, P))
+	{
+		Siec->UstawOsade(Osada);
+	}
 	bTrybBitwy = FParse::Param(FCommandLine::Get(), TEXT("bitwa"));
 	for (const FRodzajBudynku* R : FRodzajBudynku::DoBudowania())
 	{

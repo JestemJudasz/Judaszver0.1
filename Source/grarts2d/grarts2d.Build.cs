@@ -18,9 +18,11 @@ public class grarts2d : ModuleRules
 			"Engine",
 			"InputCore",
 			"Json",
+			"Networking",
 			"ProceduralMeshComponent",
 			"Slate",
-			"SlateCore"
+			"SlateCore",
+			"Sockets"
 		});
 	}
 }
