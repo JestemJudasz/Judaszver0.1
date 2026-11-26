@@ -7,6 +7,7 @@
 #include "Swiat/SwiatWysokosci.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "EngineUtils.h"
 
 namespace
 {
@@ -213,8 +214,50 @@ void AWol::Tick(float DtSwiata)
 			case EKrok::Pasie:
 			{
 				// Przejscie kawalek dalej po wybiegu (albo powrot, gdy odszedl daleko).
-				const float Kat = FMath::FRand() * 2.f * PI;
-				IdzDo(Dom + FVector2D(FMath::Cos(Kat), FMath::Sin(Kat)) * FMath::FRandRange(0.f, PromienDomu));
+				// 26.11.2026 ("woly w zagrodzie stoja bardzo ciasno"): wczesniej kolo 3 m przy wejsciu (przed plotem), teraz
+				// caly wybieg zagrody (WybiegMin..Max) i z kilku prob miejsce najdalej od innych wolow.
+				const ABudowa* Wybieg = Zagroda.Get();
+				if (!Wybieg)
+				{
+					for (TActorIterator<ABudowa> It(GetWorld()); It; ++It)
+					{
+						if (It->Rodzaj().Wolow > 0 && It->Gotowy() && FVector2D::Distance(FVector2D(It->GetActorLocation()), Dom) < 1500.f)
+						{
+							Wybieg = *It;
+							break;
+						}
+					}
+				}
+				const FRodzajBudynku* RW = Wybieg ? &Wybieg->Rodzaj() : nullptr;
+				if (RW && RW->WybiegMax.X - RW->WybiegMin.X > 200.f && RW->WybiegMax.Y - RW->WybiegMin.Y > 200.f)
+				{
+					FVector2D Naj = Dom;
+					double NajOdl = -1.0;
+					for (int32 Proba = 0; Proba < 6; ++Proba)
+					{
+						const FVector2D L(FMath::FRandRange(RW->WybiegMin.X, RW->WybiegMax.X), FMath::FRandRange(RW->WybiegMin.Y, RW->WybiegMax.Y));
+						const FVector2D P = Wybieg->ZUkladu(L);
+						double Min = 1e12;
+						for (TActorIterator<AWol> It(GetWorld()); It; ++It)
+						{
+							if (*It != this)
+							{
+								Min = FMath::Min(Min, FVector2D::DistSquared(FVector2D(It->GetActorLocation()), P));
+							}
+						}
+						if (Min > NajOdl)
+						{
+							NajOdl = Min;
+							Naj = P;
+						}
+					}
+					IdzDo(Naj);
+				}
+				else
+				{
+					const float Kat = FMath::FRand() * 2.f * PI;
+					IdzDo(Dom + FVector2D(FMath::Cos(Kat), FMath::Sin(Kat)) * FMath::FRandRange(0.f, PromienDomu));
+				}
 				break;
 			}
 			case EKrok::Laduje:

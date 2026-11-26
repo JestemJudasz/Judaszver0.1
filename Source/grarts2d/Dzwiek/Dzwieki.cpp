@@ -186,3 +186,8 @@ void UDzwieki::Tick(float Dt)
 		if (!AC->IsPlaying()) AC->Play(); // pliki Petla_* maja bLooping (Zbuduj_Dzwieki)
 	}
 }
+
+void UDzwieki::GrajPrace(const UObject* Kontekst, FName Nazwa, FVector Gdzie)
+{
+	Graj(Kontekst, Nazwa, Gdzie, EDzwiek::Praca, Nazwa == "Pila" ? 0.18f : Nazwa == "Kilof" ? 0.22f : 0.7f /* 26.11.2026: ciszej (bylo 0,3 / 0,4 / 0,8) */);
+}

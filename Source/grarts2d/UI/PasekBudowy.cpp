@@ -76,7 +76,7 @@ namespace
 const TArray<FString>& SPasekBudowy::NazwyZnakow()
 {
 	static const TArray<FString> N = { TEXT("Budowa"), TEXT("Wojsko"), TEXT("Rody"), TEXT("Mieszkalne"), TEXT("Surowce"), TEXT("Jedzenie"),
-		TEXT("Rolnictwo"), TEXT("Rzemioslo"), TEXT("Wojsko_Kat"), TEXT("Handel"), TEXT("Religia") };
+		TEXT("Rolnictwo"), TEXT("Rzemioslo"), TEXT("Wojsko_Kat"), TEXT("Handel"), TEXT("Religia"), TEXT("Mury") };
 	return N;
 }
 

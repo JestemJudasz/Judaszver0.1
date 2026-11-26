@@ -116,9 +116,11 @@ private:
 	int32 OstatnieMury = -1;
 	int32 OstatnioBuduje = -100;
 	int32 OstatniaPora = -1;
+	int32 OstatniPostepMuru = -1; // budowa muru w krokach co 4%: mur rosnie odcinek po odcinku
+	bool bBylMur = false;
 
 	// Ludziki przy kamerze.
-	struct FMiejsce { FVector2D P; const struct FRodzajBudynku* B; bool bBudowa; FVector2D Przod; };
+	struct FMiejsce { FVector2D P; const struct FRodzajBudynku* B; bool bBudowa; FVector2D Przod; bool bMur = false; }; // bMur: czolo budowy muru (B == nullptr)
 	TArray<FMiejsce> Miejsca;   // postawione budynki (do celow ludzikow)
 	FVector2D Srodek = FVector2D::ZeroVector;
 	FLinearColor Barwa = FLinearColor::White;
@@ -127,6 +129,7 @@ private:
 	enum class EFaza : uint8 { DoPracy, Pracuje, DoDomu, Odpoczywa };
 	struct FMieszkaniec { int32 Praca = -1; FVector2D Cel, Dom; EFaza Faza = EFaza::DoDomu; float Czas = 0.f, DoCiosu = 0.f; bool bWoj = false; };
 	UPROPERTY() TArray<TObjectPtr<ALudzik>> Ludzie;
+	TWeakObjectPtr<class ATerenKafle> TerenSwiata; // do ukrywania osady poza mapa grywalna (26.11.2026)
 	TArray<FMieszkaniec> Stan;
 	float DoSprawdzenia = 0.f;
 	void Zaludnij();

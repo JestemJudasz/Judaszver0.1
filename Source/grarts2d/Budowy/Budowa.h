@@ -71,6 +71,9 @@ struct FRodzajBudynku
 	FLinearColor Klepisko = FLinearColor::Transparent;
 
 	// Praca osadnikow, w ukladzie budynku w Unrealu (cm; Y jest odwrocone wzgledem Tools/budynki.py).
+	// Wybieg zwierzat w ukladzie budynku (zagroda wolow, stajnia; 26.11.2026). Pusty = woly pasa sie przy wejsciu.
+	FVector2D WybiegMin = FVector2D::ZeroVector;
+	FVector2D WybiegMax = FVector2D::ZeroVector;
 	FVector2D ObwodMin = FVector2D(-1250.f, -540.f); // prostokat, po ktorym chodza budowniczy (poza rusztowaniem)
 	FVector2D ObwodMax = FVector2D(1300.f, 540.f);
 	FVector2D Sterta = FVector2D(-200.f, 760.f);    // kamienie dla tragarzy
@@ -140,6 +143,8 @@ struct FRodzajBudynku
 	int32 Poziom = 0;          // 0 = budynek bez poziomow
 	int32 Wariantow = 1;       // warianty modelu: SM_<Model>_F<n> (wariant 0) i SM_<Model>_W<w>_F<n>; losowany przy stawianiu
 	const FRodzajBudynku& (*Ulepszenie)() = nullptr; // nastepny poziom (nullptr = najwyzszy)
+	/** Ostatni poziom lancucha Ulepszenie (sam budynek, gdy bez poziomow). Kolizja przy stawianiu (26.11.2026). */
+	const FRodzajBudynku& NajwyzszyPoziom() const;
 	bool Religia() const { return Kategoria == TEXT("Religia"); }
 	// Pierwszy budynek tej Funkcji w osadzie stawiany bez materialu (22.11.2026: pierwsza pilarnia za darmo,
 	// zeby na starcie nie utknac z domami bez desek). AOsada::Darmowy / ABudowa::BezKosztu.
@@ -147,6 +152,13 @@ struct FRodzajBudynku
 	// Paczka A (23.11.2026): poziom osady (EPoziomOsady z Osada/Rody.h: 0 oboz, 1 wies, 2 osada targowa, 3 miasto),
 	// od ktorego wolno to stawiac / ulepszyc do tego poziomu (AOsada::Poziom).
 	uint8 Wymaga = 0;
+
+	// Umocnienia gracza (26.11.2026): palisada, mur, wieze i bramy. Model bez faz (Fazy = 1) wyrasta z ziemi w czasie budowy
+	// (Narasta = wysokosc w cm). bLinia: odcinek 4 m stawiany przeciaganiem linii (model od poczatku odcinka wzdluz +X).
+	// Umocnienia nie koliduja ze soba i ludzie ich nie omijaja (shortcut: przechodza przez mur, bramy nie sa potrzebne).
+	bool bUmocnienie = false;
+	bool bLinia = false;
+	float Narasta = 0.f;
 
 	bool ZObszarem() const { return Obszar.X > 0.f; }
 	float Metry2() const { return float(Obszar.X * Obszar.Y) / 1e4f; }
@@ -198,6 +210,12 @@ struct FRodzajBudynku
 	static const FRodzajBudynku& Karczma();       // piwo dla rodzin
 	static const FRodzajBudynku& KosciolDrewniany(); // kosciol poziom 1 (Kosciol() = poziom 2)
 	static const FRodzajBudynku& KosciolWielki();    // kosciol poziom 3
+	static const FRodzajBudynku& Palisada();         // umocnienia (26.11.2026)
+	static const FRodzajBudynku& Mur();
+	static const FRodzajBudynku& WiezaPalisadowa();
+	static const FRodzajBudynku& WiezaMurowana();
+	static const FRodzajBudynku& BramaPalisadowa();
+	static const FRodzajBudynku& BramaMurowana();
 	static const FRodzajBudynku& ChataDrwala2();     // drwal poziom 2 (wiekszy zasieg)
 	static const FRodzajBudynku& ChataDrwala3();     // drwal poziom 3 (3 rodziny)
 	static const FRodzajBudynku& ChataBorowego2();   // borowy poziom 2 (wiekszy zasieg)
@@ -243,6 +261,7 @@ public:
 	FSurowce AnulujUlepszenie();
 	/** Priorytet budowy 1..5 (3 = zwykly): budowniczy ida najpierw na wyzszy, a z nizszego sa zabierani (AOsada::Przydzielaj). */
 	int32 Priorytet = 3;
+	float ZOpuszczenie = 0.f; // umocnienia: o ile model jest jeszcze schowany w ziemi (cm)
 	/** Pierwszy darmowy (AOsada::Postaw): plac budowy bez materialu, tylko praca budowniczych. */
 	void BezKosztu() { RodzajB.Koszt = FSurowce(); }
 	/** Wylosowany wariant modelu 0..Wariantow-1 (warianty 1 i 3 sa odbite w X). */

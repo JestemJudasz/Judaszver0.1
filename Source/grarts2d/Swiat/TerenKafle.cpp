@@ -690,7 +690,7 @@ bool ATerenKafle::ZnajdzDrzewo(FVector2D Srodek, float Promien, const TArray<FVe
 	double Najl = bJest ? FVector2D::DistSquared(Gdzie, Srodek) : double(Promien) * Promien;
 	for (const FSadzonka& S : Sadzonki)
 	{
-		if (S.Wiek < CzasWzrostu)
+		if (S.Wiek < DoScinki())
 		{
 			continue;
 		}
@@ -750,7 +750,7 @@ int32 ATerenKafle::DrzewWKole(FVector2D Srodek, float Promien) const
 	}
 	for (const FSadzonka& S : Sadzonki)
 	{
-		N += (S.Wiek >= CzasWzrostu && FVector2D::DistSquared(S.P, Srodek) < double(Promien) * Promien) ? 1 : 0;
+		N += (S.Wiek >= DoScinki() && FVector2D::DistSquared(S.P, Srodek) < double(Promien) * Promien) ? 1 : 0;
 	}
 	return N;
 }
@@ -759,7 +759,7 @@ bool ATerenKafle::Zetnij(FVector2D Gdzie)
 {
 	for (int32 k = 0; k < Sadzonki.Num(); ++k)
 	{
-		if (Sadzonki[k].Wiek >= CzasWzrostu && FVector2D::DistSquared(Sadzonki[k].P, Gdzie) < 150.0 * 150.0)
+		if (Sadzonki[k].Wiek >= DoScinki() && FVector2D::DistSquared(Sadzonki[k].P, Gdzie) < 150.0 * 150.0)
 		{
 			const int32 Model = Sadzonki[k].Model;
 			Sadzonki.RemoveAt(k);
@@ -867,7 +867,7 @@ int32 ATerenKafle::Sadzonek(FVector2D Srodek, float Promien) const
 	int32 N = 0;
 	for (const FSadzonka& S : Sadzonki)
 	{
-		N += (S.Wiek < CzasWzrostu && FVector2D::DistSquared(S.P, Srodek) < double(Promien) * Promien) ? 1 : 0;
+		N += (S.Wiek < DoScinki() && FVector2D::DistSquared(S.P, Srodek) < double(Promien) * Promien) ? 1 : 0;
 	}
 	return N;
 }

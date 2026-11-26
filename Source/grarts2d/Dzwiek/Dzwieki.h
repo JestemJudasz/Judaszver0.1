@@ -30,6 +30,8 @@ public:
 	static UDzwieki* Z(const UObject* Kontekst);
 	/** Dzwiek w swiecie w punkcie Gdzie. */
 	static void Graj(const UObject* Kontekst, FName Nazwa, FVector Gdzie, EDzwiek K, float Glosnosc = 1.f);
+	/** Uderzenie narzedziem przy pracy (siekiera, mlotek, kilof, pila): glosnosc wyrownana, bo nagrania pily i kilofa sa duzo glosniejsze. */
+	static void GrajPrace(const UObject* Kontekst, FName Nazwa, FVector Gdzie);
 	/** Bez polozenia (kwestie oddzialow, interfejs). */
 	static void Graj2D(const UObject* Kontekst, FName Nazwa, EDzwiek K, float Glosnosc = 1.f);
 	/** Petla tla 2D: gra woła co klatke z docelowa glosnoscia 0..1; bez wolania petla plynnie cichnie. */

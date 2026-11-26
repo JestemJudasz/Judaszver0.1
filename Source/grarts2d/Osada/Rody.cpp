@@ -654,7 +654,7 @@ void ARody::Decyduj(FRod& R)
 			R.Zapas[ESurowiec::Kloda] -= Klod;
 			R.Zapas[ESurowiec::Kamien] -= Kam;
 			R.Buduje = FRod::BudujeMury;
-			R.DoKonca = R.Mury == 0 ? 150.f : 300.f;
+			R.DoKonca = FRod::CzasMuru(R.Mury);
 			R.Ostatnio = R.Mury == 0 ? TEXT("buduje: palisadę") : TEXT("buduje: mur kamienny");
 			R.Dlaczego = bZagrozony ? TEXT("obrona: wrogowie w okolicy") : TEXT("duża osada potrzebuje murów");
 			Dziennik(R, FString::Printf(TEXT("%s | bo: %s"), *R.Ostatnio, *R.Dlaczego));

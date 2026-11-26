@@ -1134,6 +1134,16 @@ const FRodzajBudynku& FRodzajBudynku::ChataRybaka()
 	return R;
 }
 
+const FRodzajBudynku& FRodzajBudynku::NajwyzszyPoziom() const
+{
+	const FRodzajBudynku* P = this;
+	for (int32 k = 0; k < 8 && P->Ulepszenie; ++k)
+	{
+		P = &P->Ulepszenie();
+	}
+	return *P;
+}
+
 FBox2D FRodzajBudynku::Obrys() const
 {
 	if (ZObszarem())
@@ -1238,6 +1248,10 @@ const FRodzajBudynku& FRodzajBudynku::ZagrodaWolow()
 		K.Budowniczych = 1;
 		K.Tragarzy = 1;
 		K.Wejscie = FVector2D(0.f, 300.f);
+		// Wolna czesc wybiegu przed wiata (plot z Tools/budynki.py WOLY_PLOT x -6..6, y -5,2..5,4 m; -Y w Pythonie = +Y tutaj),
+		// bez pasnika przy wiacie i 0,8 m od plotu.
+		K.WybiegMin = FVector2D(-480.f, 20.f);
+		K.WybiegMax = FVector2D(480.f, 440.f);
 		K.Koszt = FSurowce(5, 2, 0);
 		K.Poziom = 1;
 		K.Ulepszenie = &ZagrodaWolow2;
@@ -1428,7 +1442,8 @@ const TArray<const FRodzajBudynku*>& FRodzajBudynku::DoBudowania()
 		&ChataZbieracza(), &ChataMysliwego(), &Spichlerz(), &Pole(), &Mlyn(), &Piekarnia(), &TartakWodny(),
 		&Owczarnia(), &ChataTkacza(), &KopalniaRudy(), &Kuznia(), &Zbrojownia(), &Targ(), &KosciolDrewniany(),
 		&ChataOpalowa(), &ChataRybaka(), &ZagrodaWolow(), &Stajnia(), &Garbarnia(), &Szewc(), &Krawiec(), &Slodownia(),
-		&Browar(), &Karczma() };
+		&Browar(), &Karczma(),
+		&Palisada(), &Mur(), &WiezaPalisadowa(), &WiezaMurowana(), &BramaPalisadowa(), &BramaMurowana() };
 	return L;
 }
 
@@ -1882,6 +1897,16 @@ void ABudowa::OdswiezFaze()
 	{
 		return; // ruina ma swoj model (Zawal)
 	}
+	if (RodzajB.Narasta > 0.f && !bPodgladB)
+	{
+		// Umocnienie wyrasta z ziemi razem z postepem (model bez faz).
+		const float Cel = -RodzajB.Narasta * (1.f - FMath::Clamp(PostepBudowy, 0.f, 1.f));
+		if (!FMath::IsNearlyEqual(Cel, ZOpuszczenie, 1.f))
+		{
+			AddActorWorldOffset(FVector(0.f, 0.f, Cel - ZOpuszczenie));
+			ZOpuszczenie = Cel;
+		}
+	}
 	// Fazy budowy (wszystkie poza ostatnia) dziela postep po rowno; ostatnia = gotowy budynek.
 	const int32 F = (Gotowy() || N == 1) ? N - 1 : FMath::Min(N - 2, int32(PostepBudowy * (N - 1)));
 	if (F != FazaTeraz)
@@ -2016,6 +2041,22 @@ void ABudowa::UstawWzrost(float W)
 	}
 }
 
+// Wysokosc terenu tak, jak go rysuje kafel mapy grywalnej (26.11.2026, "pola nadal nakladaja sie pod mape"): siatka co 4 m od
+// -Polowa, trojkaty z przekatna A-C (TerenKafle.cpp, Zbuduj). Na wypuklych zboczach plaskie trojkaty leza wyzej niz gladka
+// FSwiat::Wysokosc, wiec lan liczony z samej FSwiat::Wysokosc chowal sie pod terenem. Bierzemy wieksza z obu.
+static float WysokoscNaSiatce(double X, double Y)
+{
+	constexpr double K = 400.0;
+	const double Gx = (X + FSwiat::Polowa) / K, Gy = (Y + FSwiat::Polowa) / K;
+	const double I = FMath::FloorToDouble(Gx), J = FMath::FloorToDouble(Gy);
+	const double Fx = Gx - I, Fy = Gy - J;
+	const double X0 = I * K - FSwiat::Polowa, Y0 = J * K - FSwiat::Polowa;
+	auto W = [](double Px, double Py) { return FMath::Max(0.0, double(FSwiat::Wysokosc(Px, Py))); };
+	const double HA = W(X0, Y0), HB = W(X0 + K, Y0), HC = W(X0 + K, Y0 + K), HE = W(X0, Y0 + K);
+	const double H = Fx >= Fy ? HA + Fx * (HB - HA) + Fy * (HC - HB) : HA + Fy * (HE - HA) + Fx * (HC - HE);
+	return float(FMath::Max(H, double(FSwiat::Wysokosc(X, Y))));
+}
+
 // Lan pola (22.11.2026, zamiast kafli 5 x 5 m, ktore wisialy nad terenem): kazdy wierzcholek na wysokosci terenu,
 // rzedy wzdluz X co 50 cm (bruzda / grzbiet), lan podniesiony nad ziemie wedlug uprawy, przy brzegu opada i przechodzi
 // w kolor miedzy; brzeg to prostokat z zaokraglonymi rogami poszarpany szumem, wiec rzedy koncza sie nierowno.
@@ -2104,14 +2145,14 @@ void ABudowa::ZbudujLan(bool bSila)
 			const float Z = 6.f + Skraj * Kepy * (Podst + (bGrzbiet ? H * (0.9f + 0.2f * Los) : 0.f));
 			const FLinearColor Kk = FMath::Lerp(Miedza, (bGrzbiet ? Gora : Dol) * (0.93f + 0.14f * Los), 0.45f + 0.55f * Skraj);
 			const FVector2D Sw = ZUkladu(L);
-			V.Add(Tr.InverseTransformPosition(FVector(Sw, FSwiat::Wysokosc(Sw.X, Sw.Y) + Z)));
+			V.Add(Tr.InverseTransformPosition(FVector(Sw, WysokoscNaSiatce(Sw.X, Sw.Y) + Z)));
 			C.Add(FLinearColor(Kk.R, Kk.G, Kk.B, 1.f));
 			UV.Add(L / 200.0);
 			// Kepa na odcinku grzbietu miedzy tym a nastepnym wierzcholkiem; przy brzegu nizsza.
 			if (MZ && bGrzbiet && i < NX && W > 40.0)
 			{
 				const FVector2D Sm = ZUkladu(L + FVector2D(Krok.X * 0.5, 0.0));
-				TZ.Add(FTransform(ObrZ, FVector(Sm, FSwiat::Wysokosc(Sm.X, Sm.Y) + 4.0),
+				TZ.Add(FTransform(ObrZ, FVector(Sm, WysokoscNaSiatce(Sm.X, Sm.Y) + 4.0),
 					FVector(Krok.X / 100.0, 1.0, SkalaZ * Kepy * (0.55f + 0.45f * Skraj) * (0.9f + 0.2f * Los))));
 			}
 		}
@@ -2347,7 +2388,7 @@ void ABudowa::Podloze()
 
 bool ABudowa::Zniszczalny() const
 {
-	return !bPodgladB && RodzajB.Fazy > 1 && !Lan && RodzajB.Funkcja != EFunkcja::Pole;
+	return !bPodgladB && (RodzajB.Fazy > 1 || RodzajB.bUmocnienie) && !Lan && RodzajB.Funkcja != EFunkcja::Pole;
 }
 
 float ABudowa::MaxPunktow() const
@@ -2390,7 +2431,7 @@ FVector ABudowa::SrodekObrysu() const
 void ABudowa::WczytajZniszczenia()
 {
 	ModelZ1 = ModelZ2 = nullptr;
-	if (bPodgladB || RodzajB.Fazy <= 1 || RodzajB.Funkcja == EFunkcja::Pole)
+	if (bPodgladB || (RodzajB.Fazy <= 1 && !RodzajB.bUmocnienie) || RodzajB.Funkcja == EFunkcja::Pole)
 	{
 		return;
 	}
@@ -2641,4 +2682,82 @@ void ABudowa::EndPlay(const EEndPlayReason::Type Powod)
 		PozarId = 0;
 	}
 	Super::EndPlay(Powod);
+}
+
+// Umocnienia gracza (26.11.2026, prosba: "budowanie murow, wiez"): modele jak w osadach rodow (SM_Palisada, SM_Mur,
+// SM_*_Wieza, SM_*_Brama), bez faz budowy: model wyrasta z ziemi razem z postepem (ABudowa::OdswiezFaze).
+namespace
+{
+	FRodzajBudynku Umocnienie(const TCHAR* Nazwa, const TCHAR* Opis, const TCHAR* Model, FSurowce Koszt, float Czas, FVector2D Polowa,
+		float Narasta, bool bLinia, bool bKamien, uint8 Wymaga)
+	{
+		FRodzajBudynku K;
+		K.Nazwa = Nazwa;
+		K.Opis = Opis;
+		K.Kategoria = TEXT("Mury");
+		K.Model = Model;
+		K.Ikona = FString(TEXT("T_Ikona_")) + (Model + 3); // SM_Palisada_Wieza -> T_Ikona_Palisada_Wieza (Tools/ikony.py)
+		K.Niesione = bKamien ? TEXT("SM_Ludz_Kamien") : TEXT("SM_Ludz_Bal");
+		K.Fazy = 1;
+		K.CzasBudowy = Czas;
+		K.Koszt = Koszt;
+		K.Polowa = Polowa;
+		K.Promien = FMath::Max(Polowa.X, Polowa.Y) * 1.3f;
+		K.Budowniczych = bLinia ? 1 : 2;
+		K.Tragarzy = 1;
+		K.Narasta = Narasta;
+		K.bUmocnienie = true;
+		K.bLinia = bLinia;
+		K.Wymaga = Wymaga;
+		// Praca wokol modelu; odcinek ma poczatek na jednym koncu (+X wzdluz muru), wieza i brama srodek w poczatku ukladu.
+		const float X0 = bLinia ? -60.f : -Polowa.X - 120.f, X1 = bLinia ? 460.f : Polowa.X + 120.f, Y = Polowa.Y + 120.f;
+		K.ObwodMin = FVector2D(X0, -Y);
+		K.ObwodMax = FVector2D(X1, Y);
+		K.Sterta = FVector2D(bLinia ? 200.f : 0.f, Y + 220.f);
+		K.ZrzutX = FVector2D(bLinia ? 120.f : -150.f, bLinia ? 280.f : 150.f);
+		K.ZrzutY = Y + 20.f;
+		return K;
+	}
+}
+
+const FRodzajBudynku& FRodzajBudynku::Palisada()
+{
+	static const FRodzajBudynku R = Umocnienie(TEXT("Palisada"), TEXT("Odcinek palisady z zaostrzonych pali na niskim wale, 4 m. Przeciągnij linię na ziemi, a powstanie cały płot z odcinków. Budowane są od początku linii. Od poziomu wsi."),
+		TEXT("SM_Palisada"), FSurowce(3, 0, 0), 45.f, FVector2D(400.f, 110.f), 450.f, true, false, 1);
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::Mur()
+{
+	static const FRodzajBudynku R = Umocnienie(TEXT("Mur kamienny"), TEXT("Odcinek muru z blankami i chodnikiem dla obrońców, 4 m. Przeciągnij linię na ziemi, a powstanie cały mur. Od poziomu osady targowej."),
+		TEXT("SM_Mur"), FSurowce(0, 0, 5), 80.f, FVector2D(400.f, 120.f), 560.f, true, true, 2);
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::WiezaPalisadowa()
+{
+	static const FRodzajBudynku R = Umocnienie(TEXT("Strażnica"), TEXT("Drewniana wieża strażnicza 12 m: widok na okolicę i stanowisko łuczników. Stawiaj przy palisadzie. Od poziomu wsi."),
+		TEXT("SM_Palisada_Wieza"), FSurowce(8, 4, 0), 150.f, FVector2D(260.f, 260.f), 1200.f, false, false, 1);
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::WiezaMurowana()
+{
+	static const FRodzajBudynku R = Umocnienie(TEXT("Baszta"), TEXT("Okrągła kamienna baszta 19 m ze strzelnicami i dachem z dachówki. Stawiaj w rogach i co kilkadziesiąt metrów muru. Od poziomu osady targowej."),
+		TEXT("SM_Mur_Wieza"), FSurowce(2, 4, 18), 320.f, FVector2D(320.f, 320.f), 1900.f, false, true, 2);
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::BramaPalisadowa()
+{
+	static const FRodzajBudynku R = Umocnienie(TEXT("Brama palisady"), TEXT("Wieża bramna z przejazdem 3,8 m, wstaw ją w przerwę w palisadzie, frontem w stronę drogi. Od poziomu wsi."),
+		TEXT("SM_Palisada_Brama"), FSurowce(6, 6, 0), 130.f, FVector2D(420.f, 300.f), 700.f, false, false, 1);
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::BramaMurowana()
+{
+	static const FRodzajBudynku R = Umocnienie(TEXT("Brama miejska"), TEXT("Kamienna wieża bramna z łukowym przejazdem i broną. Wstaw ją w przerwę w murze. Od poziomu osady targowej."),
+		TEXT("SM_Mur_Brama"), FSurowce(2, 8, 14), 280.f, FVector2D(420.f, 330.f), 1200.f, false, true, 2);
+	return R;
 }

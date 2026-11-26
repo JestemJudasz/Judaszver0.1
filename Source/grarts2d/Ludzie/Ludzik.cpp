@@ -457,7 +457,7 @@ namespace
 		{
 			const ABudowa* B = *It;
 			const FRodzajBudynku& R = B->Rodzaj();
-			if (B->Podglad() || R.ZObszarem())
+			if (B->Podglad() || R.ZObszarem() || R.bUmocnienie) // umocnien nie omijamy (shortcut)
 			{
 				continue;
 			}
@@ -942,7 +942,7 @@ void ALudzik::ZadanieBorowego()
 	{
 	case EKrok::Start:
 	{
-		if (Osada->Sadzonek(FVector2D(B->GetActorLocation()), R.Zasieg) >= 16)
+		if (Osada->Sadzonek(FVector2D(B->GetActorLocation()), R.Zasieg) >= 10) // 26.11.2026: bylo 16 ("borowy za szybko produkuje drzewa")
 		{
 			Bezrobotny(6.f, TEXT("pilnuje młodego lasu"));
 			return;
@@ -2375,9 +2375,41 @@ void ALudzik::Tick(float DtSwiata)
 		}
 		else if (bMaDom && CzasStanu > Przerwa)
 		{
-			// Bez pracy: co kilka sekund przejscie w inne miejsce przy domu (2-5 m od wejscia).
+			// Bez pracy (26.11.2026, prosba: "wiecej zycia, chodza kolo domow"): co kilka sekund przejscie przy domu (2-6 m od wejscia),
+			// czasem spacer do innego budynku osady (sasiad, targ, kosciol) albo pogawedka z kims wolnym, i dluzszy odpoczynek.
 			const float Kat = FMath::FRand() * 2.f * PI;
-			IdzDo(Dom + FVector2D(FMath::Cos(Kat), FMath::Sin(Kat)) * FMath::FRandRange(200.f, 500.f));
+			FVector2D Cel2 = Dom + FVector2D(FMath::Cos(Kat), FMath::Sin(Kat)) * FMath::FRandRange(200.f, 600.f);
+			const float Los = FMath::FRand();
+			if (Los < 0.4f)
+			{
+				TArray<ABudowa*> Gotowe;
+				for (TActorIterator<ABudowa> It(GetWorld()); It; ++It)
+				{
+					if (!It->Podglad() && It->Gotowy() && !It->Rodzaj().bUmocnienie && !It->Rodzaj().ZObszarem()) { Gotowe.Add(*It); }
+				}
+				if (Gotowe.Num() > 0)
+				{
+					ABudowa* Odwiedza = Gotowe[FMath::RandRange(0, Gotowe.Num() - 1)];
+					Cel2 = Odwiedza->ZUkladu(Odwiedza->Rodzaj().Wejscie + FVector2D(FMath::FRandRange(-150.f, 150.f), 120.f + FMath::FRandRange(0.f, 200.f)));
+				}
+			}
+			else if (Los < 0.6f)
+			{
+				// Stanie we dwoje: podchodzi do wolnego sasiada.
+				for (TActorIterator<ALudzik> It(GetWorld()); It; ++It)
+				{
+					const ALudzik* Inny = *It;
+					if (Inny != this && GetUniqueID() < Inny->GetUniqueID() && Inny->Wolny() && !Inny->bWalka && Inny->Stan == EStan::Stoi
+						&& FVector2D::Distance(FVector2D(Inny->GetActorLocation()), FVector2D(GetActorLocation())) < 2500.f)
+					{
+						const FVector2D Dok = FVector2D(Inny->GetActorLocation());
+						Cel2 = Dok + (FVector2D(GetActorLocation()) - Dok).GetSafeNormal() * 130.f;
+						break;
+					}
+				}
+			}
+			Przerwa = FMath::FRandRange(3.f, 12.f);
+			IdzDo(Cel2);
 		}
 	}
 	else if (Stan == EStan::Bierze || Stan == EStan::Odklada || Stan == EStan::Kopie || Stan == EStan::Zbiera)
@@ -2780,7 +2812,7 @@ void ALudzik::Animuj(float Dt)
 	}
 	if (!Stuk.IsNone() && FMath::Frac(Faza) < FazaPrzed)
 	{
-		UDzwieki::Graj(this, Stuk, GetActorLocation() + FVector(0.f, 0.f, 100.f), EDzwiek::Praca);
+		UDzwieki::GrajPrace(this, Stuk, GetActorLocation() + FVector(0.f, 0.f, 100.f));
 	}
 	if (bWalka)
 	{

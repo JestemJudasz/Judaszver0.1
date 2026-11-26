@@ -65,7 +65,9 @@ public:
 
 	/** Sekundy od posadzenia do doroslego drzewa. */
 	UPROPERTY(EditAnywhere, Category = "Natura")
-	float CzasWzrostu = 240.f;
+	float CzasWzrostu = 360.f;
+	/** Od ilu sekund drwal moze sciac posadzone drzewo (26.11.2026: przy 70% wyglada juz na dorosle, a drwal czekal do 100%). */
+	float DoScinki() const { return CzasWzrostu * 0.7f; }
 
 	/** Ile kafli 512 m w kazda strone od kafla pod ogniskiem kamery (5 = 11x11 kafli, >= 2,5 km; przy max oddaleniu rog kadru ~1,6 km). */
 	UPROPERTY(EditAnywhere, Category = "Region")

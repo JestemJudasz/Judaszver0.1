@@ -69,6 +69,12 @@ private:
 	bool MoznaObszar(const FRodzajBudynku& R, FVector2D Gdzie, float ObrotSt, float& Z) const;
 	/** Zaznaczanie prostokata pola / pastwiska (zamiast Stawianie). */
 	void StawianieObszaru(APlayerController* PC);
+	/** Palisada i mur: przeciaganie linii odcinkow (FRodzajBudynku::bLinia). */
+	void StawianieLinii(APlayerController* PC);
+	void UsunPodgladLinii();
+	TArray<TWeakObjectPtr<ABudowa>> PodgladLinii;
+	bool bLiniaTrwa = false;
+	FVector2D LiniaA = FVector2D::ZeroVector;
 	/** Panel nad paskiem budowy: Zbuduj -> stawia Szkic. */
 	void ZbudujSzkic();
 	FString OpisSzkicu() const;

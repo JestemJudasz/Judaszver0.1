@@ -68,6 +68,19 @@ bool FOsadaRoduUkladTest::RunTest(const FString&)
 		}
 		TestEqual(TEXT("Stare budynki na miejscu: ") + R.Nazwa, Przesuniete, 0);
 		TestEqual(TEXT("Nowe domy stoja: ") + R.Nazwa, O->Sprawdz().Budynkow, O->Sprawdz().Chcianych);
+
+		// Mur rosnie na oczach (26.11.2026): palisada w budowie ma tyle odcinkow, ile postepu (od 0 do pelnego obwodu).
+		FRod R3 = R;
+		R3.Mury = 1;
+		R3.Buduje = -1;
+		O->Odswiez(R3, EPora::Lato);
+		const int32 Pelny = O->Sprawdz().Odcinkow;
+		R3.Mury = 0;
+		R3.Buduje = FRod::BudujeMury;
+		R3.DoKonca = FRod::CzasMuru(0) * 0.5f;
+		O->Odswiez(R3, EPora::Lato);
+		const int32 Polowa = O->Sprawdz().Odcinkow;
+		TestTrue(FString::Printf(TEXT("Mur w budowie rosnie (%s: polowa postepu %d z %d odcinkow)"), *R.Nazwa, Polowa, Pelny), Polowa > Pelny * 0.3f && Polowa < Pelny * 0.7f);
 		O->Destroy();
 	}
 	GEngine->DestroyWorldContext(W);

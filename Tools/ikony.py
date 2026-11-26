@@ -22,9 +22,16 @@ IKONY = {"SM_Chata": 4, "SM_DomPruski": 4, "SM_DomDuzy": 4, "SM_Kosciol": 5,
          "SM_Owczarnia": 4, "SM_ChataTkacza": 4, "SM_KopalniaRudy": 4, "SM_Kuznia": 4, "SM_Zbrojownia": 4,
          "SM_Targ": 4, "SM_KosciolDrewniany": 4, "SM_ChataOpalowa": 4, "SM_ChataRybaka": 4, "SM_ZagrodaWolow": 4, "SM_Stajnia": 4,
          "SM_Garbarnia": 4, "SM_Szewc": 4, "SM_Krawiec": 4, "SM_Slodownia": 4, "SM_Browar": 4, "SM_Karczma": 4}
+# Umocnienia gracza (26.11.2026): modele bez faz, ikona z samych czesci (plik _F<faza> nie jest czytany).
+for _m in ("SM_Palisada", "SM_Mur", "SM_Palisada_Wieza", "SM_Mur_Wieza", "SM_Palisada_Brama", "SM_Mur_Brama"):
+    IKONY[_m] = 1
 # Etap 3: ikona zlozona z kilku modeli (pole z dojrzalym zbozem, wiatrak ze skrzydlami, tartak z kolem); przesuniecie w metrach
 # ukladu budowania (Tools/budynki.py: MLYN_PIASTA, KOLO).
-ZLOZONE = {"SM_Pole": [("SM_Pole_Dojrzale", (0, 0, 0))],
+ZLOZONE = {"SM_Palisada": [("SM_Palisada", (-4.0, 0, 0)), ("SM_Palisada", (0, 0, 0)), ("SM_Palisada", (4.0, 0, 0))],
+           "SM_Mur": [("SM_Mur", (-4.0, 0, 0)), ("SM_Mur", (0, 0, 0)), ("SM_Mur", (4.0, 0, 0))],
+           "SM_Palisada_Wieza": [("SM_Palisada_Wieza", (0, 0, 0))], "SM_Mur_Wieza": [("SM_Mur_Wieza", (0, 0, 0))],
+           "SM_Palisada_Brama": [("SM_Palisada_Brama", (0, 0, 0))], "SM_Mur_Brama": [("SM_Mur_Brama", (0, 0, 0))],
+           "SM_Pole": [("SM_Pole_Dojrzale", (0, 0, 0))],
            "SM_Mlyn": [("SM_Mlyn_F4", (0, 0, 0)), ("SM_Mlyn_Skrzydla", (0.0, -1.95, 6.0))],
            "SM_TartakWodny": [("SM_TartakWodny_F4", (0, 0, 0)), ("SM_TartakWodny_Kolo", (-3.75, 0.0, 1.7))],
            "SM_Owczarnia": [("SM_Owczarnia_F4", (0, 0, 0)), ("SM_Owca", (-3.0, -2.0, 0.0)), ("SM_Owca", (0.5, -3.2, 0.0)),
@@ -228,10 +235,20 @@ def znak(nazwa):
         d.polygon([(6, 5), (26, 5), (26, 17), (16, 29), (6, 17)], fill=J)
         d.polygon([(16, 5), (26, 5), (26, 17), (16, 29)], fill=C)
         d.rectangle([14, 9, 18, 22], fill=OBRYS[:3] + (180,))
+    elif nazwa == "Mury":          # zakladka murow: kawalek muru z blankami i wieza
+        d.rectangle([2, 15, 30, 28], fill=J)
+        for x in (2, 8, 14, 20, 26):
+            d.rectangle([x, 11, x + 3, 15], fill=J)
+        d.rectangle([19, 4, 30, 28], fill=J)
+        for x in (19, 23, 27):
+            d.rectangle([x, 1, x + 2, 4], fill=J)
+        d.rectangle([19, 4, 30, 28], outline=C)
+        d.rectangle([2, 22, 18, 28], fill=C)
+        d.rectangle([23, 12, 26, 18], fill=C)
     return _obrys(im).resize((128, 128), Image.NEAREST)
 
 
-ZNAKI = ["Budowa", "Wojsko", "Rody", "Mieszkalne", "Surowce", "Jedzenie", "Rolnictwo", "Rzemioslo", "Handel", "Religia", "Wojsko_Kat"]
+ZNAKI = ["Budowa", "Wojsko", "Rody", "Mieszkalne", "Surowce", "Jedzenie", "Rolnictwo", "Rzemioslo", "Handel", "Religia", "Wojsko_Kat", "Mury"]
 
 
 def main():

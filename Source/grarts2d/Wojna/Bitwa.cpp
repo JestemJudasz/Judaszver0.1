@@ -1030,7 +1030,7 @@ void ABitwa::Grabiez(FOddzial& O)
 	TArray<ABudowa*> Cele;
 	for (TActorIterator<ABudowa> It(GetWorld()); It; ++It)
 	{
-		if (It->Zniszczalny() && !It->Ruina() && !It->Zgliszcza() && It->Ogien() <= 0.f && Dl(FVector2D(It->GetActorLocation()), O.Srodek) < 5000.f)
+		if (It->Zniszczalny() && !It->Rodzaj().bUmocnienie && !It->Ruina() && !It->Zgliszcza() && It->Ogien() <= 0.f && Dl(FVector2D(It->GetActorLocation()), O.Srodek) < 5000.f)
 		{
 			Cele.Add(*It);
 		}

@@ -625,6 +625,10 @@ void ABudowniczy::UstawPomoc()
 	{
 		T = Drogi->Pomoc();
 	}
+	else if (Wybrany && Wybrany->bLinia)
+	{
+		T = FString::Printf(TEXT("%s: przytrzymaj lewy przycisk i przeciągnij linię, puść - budowa (zielone odcinki), R - obróć, prawy klik / Esc - koniec"), *Wybrany->Nazwa);
+	}
 	else if (Wybrany)
 	{
 		T = FString::Printf(TEXT("%s: lewy klik - postaw, R - obróć (przytrzymaj: płynnie, F - w drugą stronę), Shift - kilka, prawy klik / Esc - anuluj\nPrzy drodze budynek sam staje frontem do niej (Alt - bez przyciągania)"), *Wybrany->Nazwa);
@@ -726,9 +730,9 @@ bool ABudowniczy::MoznaPostawic(const FRodzajBudynku& R, FVector2D Gdzie, float 
 	{
 		bOk = false;
 	}
-	if (Drogi && Drogi->PrzecinaBudynek(R, Gdzie, ObrotSt))
+	if (Drogi && Drogi->PrzecinaBudynek(R.NajwyzszyPoziom(), Gdzie, ObrotSt))
 	{
-		bOk = false; // budynek nie staje na drodze
+		bOk = false; // budynek nie staje na drodze (26.11.2026: obrys po pelnym ulepszeniu)
 	}
 	return bOk;
 }
@@ -807,6 +811,7 @@ bool ABudowniczy::MoznaOboz(FVector2D Srodek, TArray<float>& Z) const
 void ABudowniczy::Wybierz(const FRodzajBudynku* R)
 {
 	Wybrany = R;
+	UsunPodgladLinii();
 	KrokObszaru = 0;
 	Szkic.Reset();
 	SzkicPoz = FVector(1e9);
@@ -1333,6 +1338,11 @@ void ABudowniczy::Stawianie(APlayerController* PC)
 		StawianieObszaru(PC);
 		return;
 	}
+	if (Wybrany->bLinia)
+	{
+		StawianieLinii(PC);
+		return;
+	}
 	if (PC->WasInputKeyJustPressed(EKeys::Escape) || PC->WasInputKeyJustPressed(EKeys::RightMouseButton))
 	{
 		Wybierz(nullptr);
@@ -1377,6 +1387,106 @@ void ABudowniczy::Stawianie(APlayerController* PC)
 		{
 			Wybierz(nullptr);
 		}
+	}
+}
+
+void ABudowniczy::UsunPodgladLinii()
+{
+	for (const TWeakObjectPtr<ABudowa>& B : PodgladLinii)
+	{
+		if (B.IsValid()) { B->Destroy(); }
+	}
+	PodgladLinii.Reset();
+	bLiniaTrwa = false;
+}
+
+void ABudowniczy::StawianieLinii(APlayerController* PC)
+{
+	// Palisada i mur (26.11.2026): przytrzymaj lewy przycisk i przeciagnij - powstaje szereg odcinkow po 4 m od punktu A do kursora
+	// (zielone = mozna, czerwone = nie). Puszczenie stawia zielone odcinki; wybor zostaje, zeby ciagnac mur dalej (Esc / prawy klik konczy).
+	constexpr float Dl = 400.f;
+	constexpr int32 Max = 40;
+	if (PC->WasInputKeyJustPressed(EKeys::Escape) || PC->WasInputKeyJustPressed(EKeys::RightMouseButton))
+	{
+		if (bLiniaTrwa)
+		{
+			UsunPodgladLinii();
+		}
+		else
+		{
+			Wybierz(nullptr);
+		}
+		return;
+	}
+	FVector P;
+	if (!TerenPodKursorem(PC, P))
+	{
+		if (bLiniaTrwa && PC->WasInputKeyJustReleased(EKeys::LeftMouseButton))
+		{
+			UsunPodgladLinii(); // puszczone poza mapa: linia przepada, nic sie nie buduje
+			return;
+		}
+		for (const TWeakObjectPtr<ABudowa>& B : PodgladLinii) { if (B.IsValid()) { B->SetActorHiddenInGame(true); } }
+		return;
+	}
+	const FVector2D K(P);
+	if (!bLiniaTrwa)
+	{
+		ObrocKlawiszem(PC);
+		if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+		{
+			bLiniaTrwa = true;
+			LiniaA = K;
+		}
+	}
+	const FVector2D A = bLiniaTrwa ? LiniaA : K;
+	const FVector2D Wektor = K - A;
+	const float Dist = float(Wektor.Size());
+	const int32 N = bLiniaTrwa && Dist > 150.f ? FMath::Clamp(FMath::RoundToInt32(Dist / Dl), 1, Max) : 1;
+	const float Yaw = bLiniaTrwa && Dist > 150.f ? FMath::RadiansToDegrees(FMath::Atan2(Wektor.Y, Wektor.X)) : Obrot;
+	if (bLiniaTrwa && Dist > 150.f) { Obrot = Yaw; }
+	const FVector2D Kier(FMath::Cos(FMath::DegreesToRadians(Yaw)), FMath::Sin(FMath::DegreesToRadians(Yaw)));
+	while (PodgladLinii.Num() < N)
+	{
+		FActorSpawnParameters Sp;
+		Sp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ABudowa* B = GetWorld()->SpawnActor<ABudowa>(FVector::ZeroVector, FRotator::ZeroRotator, Sp);
+		if (!B) { break; }
+		B->Ustaw(*Wybrany, true);
+		PodgladLinii.Add(B);
+	}
+	while (PodgladLinii.Num() > N)
+	{
+		if (ABudowa* B = PodgladLinii.Pop().Get()) { B->Destroy(); }
+	}
+	if (Podglad.IsValid()) { Podglad->SetActorHiddenInGame(true); }
+	TArray<FVector> Miejsca; // X, Y, Z odcinka; Z = NaN gdy nie wolno
+	for (int32 i = 0; i < PodgladLinii.Num(); ++i)
+	{
+		const FVector2D P0 = A + Kier * (Dl * i);
+		float Z = 0.f;
+		const bool bOk = MoznaPostawic(*Wybrany, P0, Yaw, Z); // ten sam punkt, w ktorym odcinek jest zapisany (Polowa.X = 400 obejmuje caly odcinek)
+		Miejsca.Add(FVector(P0, bOk ? Z : TNumericLimits<float>::Max()));
+		if (ABudowa* B = PodgladLinii[i].Get())
+		{
+			B->SetActorHiddenInGame(false);
+			B->SetActorLocationAndRotation(FVector(P0, bOk ? Z : FSwiat::Wysokosc(P0.X, P0.Y)), FRotator(0.f, Yaw, 0.f));
+			B->UstawKolorPodgladu(bOk);
+		}
+	}
+	if (bLiniaTrwa && PC->WasInputKeyJustReleased(EKeys::LeftMouseButton))
+	{
+		int32 Postawiono = 0;
+		for (const FVector& M : Miejsca)
+		{
+			if (M.Z < TNumericLimits<float>::Max())
+			{
+				Osada->Postaw(*Wybrany, FVector2D(M), Yaw, M.Z);
+				++Postawiono;
+			}
+		}
+		UsunPodgladLinii();
+		if (Postawiono == 0 && Osada) { Osada->Ogloszenie(TEXT("Tu nie można budować (teren, rzeka albo inny budynek)")); }
 	}
 }
 

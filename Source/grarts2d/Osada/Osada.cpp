@@ -1,6 +1,7 @@
 // Plik: Source/grarts2d/Osada/Osada.cpp
 #include "Osada/Osada.h"
 #include "Osada/Rody.h"
+#include "Osada/Drogi.h"
 #include "Budowy/Budowa.h"
 #include "Dzwiek/Dzwieki.h"
 #include "Efekty/Efekty.h"
@@ -462,15 +463,22 @@ bool AOsada::Zablokowana(const ABudowa* B) const
 	return true;
 }
 
-bool AOsada::Koliduje(const FRodzajBudynku& R, FVector2D Gdzie, float Obrot, const ABudowa* Pomin) const
+bool AOsada::Koliduje(const FRodzajBudynku& RObecny, FVector2D Gdzie, float Obrot, const ABudowa* Pomin) const
 {
+	// 26.11.2026 (prosba uzytkownika, "najwazniejsze"): kolizja liczona z obrysu po pelnym ulepszeniu - i dla stawianego
+	// ducha, i dla stojacych budynkow - zeby pozniejsze Ulepsz nie bylo zablokowane brakiem miejsca.
+	const FRodzajBudynku& R = RObecny.NajwyzszyPoziom();
 	for (const TWeakObjectPtr<ABudowa>& B : Budynki)
 	{
 		if (!B.IsValid() || B.Get() == Pomin)
 		{
 			continue;
 		}
-		const FRodzajBudynku& Inny = B->Rodzaj();
+		const FRodzajBudynku& Inny = B->Rodzaj().NajwyzszyPoziom();
+		if (R.bUmocnienie && Inny.bUmocnienie)
+		{
+			continue; // odcinki muru, wieze i bramy stoja jeden przy drugim
+		}
 		if (R.ZObszarem() || Inny.ZObszarem())
 		{
 			// Pole i pastwisko: prostokaty obrysu (zwykly budynek z 1 m zapasu) nie moga na siebie nachodzic.
@@ -663,8 +671,10 @@ void AOsada::Tick(float DeltaSeconds)
 		if (UDzwieki* D = UDzwieki::Z(this))
 		{
 			const float Bliskosc = 1.f - FMath::Clamp((FVector2D::Distance(FVector2D(D->Ucho()), SrodekObozu) - 15000.f) / 25000.f, 0.f, 1.f);
-			UDzwieki::Petla(this, "Petla_Wioska", EDzwiek::Osada, 0.5f * Bliskosc);
-			UDzwieki::Petla(this, "Petla_Gwar", EDzwiek::Osada, 0.35f * Bliskosc * D->Blisko() * FMath::Min(1.f, Ludzie.Num() / 25.f));
+			// Wedlug liczby ludzi: namiot z jedna rodzina to cicha wies, gwar rozmow dopiero od kilkunastu osob.
+			const float N = Ludzie.Num();
+			UDzwieki::Petla(this, "Petla_Wioska", EDzwiek::Osada, (0.05f + 0.25f * FMath::Clamp(N / 80.f, 0.f, 1.f)) /* 26.11.2026: ciszej, bylo 0,08 + 0,42 */ * Bliskosc);
+			UDzwieki::Petla(this, "Petla_Gwar", EDzwiek::Osada, 0.2f * Bliskosc * D->Blisko() * FMath::Clamp((N - 10.f) / 60.f, 0.f, 1.f));
 		}
 	}
 	DoPrzegladu -= DeltaSeconds;
@@ -894,9 +904,19 @@ bool AOsada::MiejsceNaDrzewo(FVector2D Srodek, float Promien, FVector2D& Out)
 			continue;
 		}
 		bool bWolne = !(bOboz && FVector2D::Distance(P, SrodekObozu) < PromienObozu + 200.f);
+		// 26.11.2026 ("borowy sadzi na budynkach i drogach"): obrocony prostokat obrysu po pelnym ulepszeniu + 3 m zamiast kola
+		// Promien (pola i pastwiska sa duzo wieksze niz Promien) i 3 m od kazdej drogi.
 		for (const TWeakObjectPtr<ABudowa>& B : Budynki)
 		{
-			bWolne &= !(B.IsValid() && FVector2D::Distance(FVector2D(B->GetActorLocation()), P) < B->Rodzaj().Promien + 150.f);
+			if (B.IsValid() && bWolne)
+			{
+				const FVector Lok = B->GetActorTransform().InverseTransformPositionNoScale(FVector(P, B->GetActorLocation().Z));
+				bWolne = !B->Rodzaj().NajwyzszyPoziom().Obrys().ExpandBy(300.f).IsInside(FVector2D(Lok));
+			}
+		}
+		if (const ADrogi* D = ADrogi::Obecne())
+		{
+			bWolne &= !D->NaDrodze(P, 300.f);
 		}
 		if (!bWolne || Zarezerwowane(P, 380.f) || Teren->DrzewoBlisko(P, 380.f))
 		{

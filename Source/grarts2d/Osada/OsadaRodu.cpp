@@ -254,10 +254,15 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 	Rodzin = R.Rodzin;
 	Woje = R.Woje;
 	PoraTeraz = Pora;
-	if (R.Budynkow == Ostatnio && R.Mury == OstatnieMury && R.Buduje == OstatnioBuduje && int32(Pora) == OstatniaPora)
+	const bool bBudujeMur = R.Buduje == FRod::BudujeMury;
+	const float PostepMuru = bBudujeMur ? FMath::Clamp(1.f - R.DoKonca / FRod::CzasMuru(R.Mury), 0.03f, 1.f) : 0.f;
+	const int32 KrokMuru = bBudujeMur ? FMath::FloorToInt32(PostepMuru * 25.f) : -1;
+	const bool bTylkoMur = R.Budynkow == Ostatnio && R.Mury == OstatnieMury && R.Buduje == OstatnioBuduje && int32(Pora) == OstatniaPora;
+	if (bTylkoMur && KrokMuru == OstatniPostepMuru)
 	{
 		return;
 	}
+	OstatniPostepMuru = KrokMuru;
 	if (OstatniRod.Get() != &R)
 	{
 		OstatniRod = MakeShared<FRod>(R);
@@ -704,14 +709,8 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 	Chcianych = Sztuki.Num();
 	const TArray<FBrama> StareBramy = MoveTemp(BramyO);
 	BramyO.Reset();
-	if (R.Mury > 0 && Obrys.Num() >= 3)
+	if ((R.Mury > 0 || bBudujeMur) && Obrys.Num() >= 3)
 	{
-		const bool bKamien = R.Mury >= 2;
-		bMuryKamienne = bKamien;
-		UStaticMesh* Odc = Model(bKamien ? TEXT("SM_Mur") : TEXT("SM_Palisada"));
-		UStaticMesh* Schody = Model(bKamien ? TEXT("SM_Mur_Schody") : TEXT("SM_Palisada_Schody"));
-		UStaticMesh* Wieza = Model(bKamien ? TEXT("SM_Mur_Wieza") : TEXT("SM_Palisada_Wieza"));
-		UStaticMesh* BramaM = Model(bKamien ? TEXT("SM_Mur_Brama") : TEXT("SM_Palisada_Brama"));
 		// Obwod zgodnie z zegarem: wtedy +Y modelu (lewa strona kierunku) patrzy na zewnatrz osady.
 		TArray<FVector2D> Cw = Obrys;
 		Algo::Reverse(Cw);
@@ -757,6 +756,17 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 			for (const float G : Bramy) { const float D = FMath::Abs(A - G); M = FMath::Min(M, FMath::Min(D, Obwod - D)); }
 			return M;
 		};
+		// Jeden pierscien (Poziom 1 palisada, 2 kamien) tylko na luku [Od, Do): w czasie budowy nowy rosnie od luku 0,
+		// a reszte obwodu trzyma stary. bObrona: pierscien, ktory juz stoi (tylko on ma bramy z wytrzymaloscia).
+		auto Pierscien = [&](int32 Poziom, float Od, float Do, bool bObrona)
+		{
+		auto Bierz = [&](float A) { A = FMath::Fmod(A + Obwod, Obwod); return A >= Od && A < Do; };
+		const bool bKamien = Poziom >= 2;
+		if (bObrona) { bMuryKamienne = bKamien; }
+		UStaticMesh* Odc = Model(bKamien ? TEXT("SM_Mur") : TEXT("SM_Palisada"));
+		UStaticMesh* Schody = Model(bKamien ? TEXT("SM_Mur_Schody") : TEXT("SM_Palisada_Schody"));
+		UStaticMesh* Wieza = Model(bKamien ? TEXT("SM_Mur_Wieza") : TEXT("SM_Palisada_Wieza"));
+		UStaticMesh* BramaM = Model(bKamien ? TEXT("SM_Mur_Brama") : TEXT("SM_Palisada_Brama"));
 		for (const float G : Bramy)
 		{
 			FVector2D P, T;
@@ -768,7 +778,8 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 			{
 				if (FVector2D::Distance(S.P, P) < 500.f) { Br.Punkty = FMath::Min(S.Punkty, Max); break; }
 			}
-			BramyO.Add(Br);
+			if (bObrona) { BramyO.Add(Br); }
+			if (!Bierz(G)) { continue; }
 			const float U = Br.Punkty / Max;
 			Dodaj(U <= 0.f ? Zniszczony(BramaM, 2) : (U < 0.6f ? Zniszczony(BramaM, 1) : BramaM), FVector(P, ZNajnizej(P, 400.f)), YawOsi(T));
 			Karczuj(Teren, P, 1000.f);
@@ -803,6 +814,7 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 				const float Sl = Dl / Ile;
 				for (int32 j = 0; j < Ile; ++j)
 				{
+					if (!Bierz(K.Key + (j + 0.5f) * Sl)) { continue; }
 					const FVector2D P0 = Cw[e] + T * (K.Key - Luk[e] + j * Sl), P1 = P0 + T * Sl;
 					const float Z0 = Z(P0), Z1 = Z(P1);
 					const bool bSchody = Ile >= 4 && j == Ile / 2 - 1;
@@ -821,7 +833,7 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 			for (int32 j = 1; j <= Dodatkowe; ++j) { Gdzie.Add(Luk[e] + (Luk[e + 1] - Luk[e]) * j / (Dodatkowe + 1)); }
 			for (const float A : Gdzie)
 			{
-				if (OdBramy(A) < PolBramy + 500.f) { continue; }
+				if (OdBramy(A) < PolBramy + 500.f || !Bierz(A)) { continue; }
 				FVector2D P, Tt;
 				NaObwodzie(A, P, Tt);
 				const FVector2D Kier2 = A == Luk[e] ? (Tp + T).GetSafeNormal() : T;
@@ -829,6 +841,17 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 				Karczuj(Teren, P, 900.f);
 				++Baszt;
 			}
+		}
+		};
+		const float Czolo = PostepMuru * Obwod;
+		if (R.Mury > 0) { Pierscien(R.Mury, bBudujeMur ? Czolo : 0.f, Obwod + 1.f, true); }
+		if (bBudujeMur)
+		{
+			Pierscien(R.Mury + 1, 0.f, Czolo, false);
+			// Czolo budowy od strony osady: tu stoja budowniczowie z mlotkami.
+			FVector2D P, T;
+			NaObwodzie(Czolo, P, T);
+			Miejsca.Add({ P, nullptr, true, -Lewa(T), true });
 		}
 	}
 
@@ -851,12 +874,22 @@ void AOsadaRodu::Odswiez(const FRod& R, EPora Pora)
 		}
 		C->AddInstances(Para.Value, false, true, false);
 	}
-	bZiemiaDoZbudowania = true;
-	UE_LOG(LogTemp, Log, TEXT("OsadaRodu: %s - %d budynków w środku, %d za murami, mury %d: %d odcinków, %d baszt, %d bram, %d ulic"),
-		*R.Nazwa, WSrodku, Dzialki.Num() - WSrodku, R.Mury, Odcinkow, Baszt, Bram, UliceZiemi.Num());
+	if (!bTylkoMur) // gdy tylko mur urosl o kawalek, dzialki i ulice te same: ziemi nie budujemy od nowa
+	{
+		bZiemiaDoZbudowania = true;
+		UE_LOG(LogTemp, Log, TEXT("OsadaRodu: %s - %d budynków w środku, %d za murami, mury %d: %d odcinków, %d baszt, %d bram, %d ulic"),
+			*R.Nazwa, WSrodku, Dzialki.Num() - WSrodku, R.Mury, Odcinkow, Baszt, Bram, UliceZiemi.Num());
+	}
+	// Budowa muru zaczela sie albo skonczyla: ludzie od nowa (inne miejsca pracy), stawia ich Tick za chwile.
+	if (bBudujeMur != bBylMur && Ludzie.Num() > 0) { Wyludnij(); }
+	bBylMur = bBudujeMur;
 	for (int32 k = 0; k < Stan.Num(); ++k)
 	{
-		NowyCel(k); // budynki przestawione: nowe cele
+		// Budynki przestawione: nowe cele. Gdy urosl tylko mur, nowy cel dostaja sami budowniczowie muru (czolo sie przesunelo).
+		if (!bTylkoMur || (Miejsca.IsValidIndex(Stan[k].Praca) && Miejsca[Stan[k].Praca].bMur))
+		{
+			NowyCel(k);
+		}
 	}
 }
 
@@ -1023,8 +1056,8 @@ namespace
 	/** Narzedzie w reku przy danej pracy (modele SM_Ludz_*). */
 	const TCHAR* Narzedzie(const FRodzajBudynku* B, bool bBudowa, EPora P)
 	{
+		if (bBudowa) { return TEXT("SM_Ludz_Mlotek"); } // takze czolo muru (B == nullptr)
 		if (!B) { return TEXT("SM_Ludz_Kosz"); }
-		if (bBudowa) { return TEXT("SM_Ludz_Mlotek"); }
 		switch (B->Funkcja)
 		{
 		case EFunkcja::Drwal: return TEXT("SM_Ludz_Siekiera");
@@ -1040,6 +1073,15 @@ namespace
 		}
 	}
 	bool Machanie(const TCHAR* N) { return FCString::Strstr(N, TEXT("Kosz")) == nullptr && FCString::Strstr(N, TEXT("Wedka")) == nullptr; }
+	/** Odglos uderzenia narzedziem (grupy jak u gracza). */
+	FName Stuk(const TCHAR* N)
+	{
+		for (const TCHAR* G : { TEXT("Siekiera"), TEXT("Mlotek"), TEXT("Kilof"), TEXT("Pila") })
+		{
+			if (FCString::Strstr(N, G)) { return FName(G); }
+		}
+		return NAME_None;
+	}
 }
 
 void AOsadaRodu::Tick(float DeltaSeconds)
@@ -1055,12 +1097,31 @@ void AOsadaRodu::Tick(float DeltaSeconds)
 		DoSprawdzenia = 1.f;
 		const APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
 		const APawn* Kam = PC ? PC->GetPawn() : nullptr;
-		const bool bBlisko = Kam && FVector2D::Distance(FVector2D(Kam->GetActorLocation()), Srodek) < Zasieg && !bOblezona;
+		// 26.11.2026 ("widac osade z mapy papierowej"): poza mapa grywalna osada rodu jest ukryta i bez ludzi, jak osada gracza.
+		if (!TerenSwiata.IsValid())
+		{
+			for (TActorIterator<ATerenKafle> It(GetWorld()); It; ++It) { TerenSwiata = *It; break; }
+		}
+		const bool bMapa = TerenSwiata.IsValid() && !TerenSwiata->WRegionie();
+		if (bMapa != IsHidden())
+		{
+			SetActorHiddenInGame(bMapa);
+		}
+		const bool bBlisko = !bMapa && Kam && FVector2D::Distance(FVector2D(Kam->GetActorLocation()), Srodek) < Zasieg && !bOblezona;
 		if (bBlisko && Ludzie.Num() == 0 && Miejsca.Num() > 0) { Zaludnij(); }
 		if (!bBlisko && Ludzie.Num() > 0) { Wyludnij(); } // przy oblezeniu mieszkancy sie chowaja
 		if (bZiemiaDoZbudowania && Kam && FVector2D::Distance(FVector2D(Kam->GetActorLocation()), Srodek) < BliskoZiemi) { ZbudujZiemie(); }
 	}
 	const float Dt = DeltaSeconds * FMath::Min(ABudowa::Tempo, 3.f);
+	UDzwieki* Dzw = Ludzie.Num() > 0 ? UDzwieki::Z(this) : nullptr;
+	if (Dzw)
+	{
+		// Tlo wsi rodu jak u gracza (AOsada::Tick), liczba ludzi z rodzin (ok. 3 osoby na rodzine).
+		const float Bliskosc = 1.f - FMath::Clamp((FVector2D::Distance(FVector2D(Dzw->Ucho()), Srodek) - 15000.f) / 25000.f, 0.f, 1.f);
+		const float N = Rodzin * 3.f;
+		UDzwieki::Petla(this, "Petla_Wioska", EDzwiek::Osada, (0.05f + 0.25f * FMath::Clamp(N / 80.f, 0.f, 1.f)) /* 26.11.2026: ciszej, bylo 0,08 + 0,42 */ * Bliskosc);
+		UDzwieki::Petla(this, "Petla_Gwar", EDzwiek::Osada, 0.2f * Bliskosc * Dzw->Blisko() * FMath::Clamp((N - 10.f) / 60.f, 0.f, 1.f));
+	}
 	for (int32 k = 0; k < Ludzie.Num(); ++k)
 	{
 		ALudzik* L = Ludzie[k];
@@ -1089,9 +1150,12 @@ void AOsadaRodu::Tick(float DeltaSeconds)
 			{
 				S.DoCiosu = S.bWoj ? FMath::FRandRange(1.0f, 1.8f) : FMath::FRandRange(1.1f, 1.6f);
 				const FMiejsce* M = Miejsca.IsValidIndex(S.Praca) ? &Miejsca[S.Praca] : nullptr;
-				if (S.bWoj || Machanie(Narzedzie(M ? M->B : nullptr, M && M->bBudowa, PoraTeraz)))
+				const TCHAR* N = Narzedzie(M ? M->B : nullptr, M && M->bBudowa, PoraTeraz);
+				if (S.bWoj || Machanie(N))
 				{
 					L->WalkaCios(S.bWoj ? Srodek : (M ? M->P : Srodek));
+					const FName Dz = S.bWoj ? NAME_None : Stuk(N);
+					if (!Dz.IsNone()) { UDzwieki::GrajPrace(this, Dz, L->GetActorLocation() + FVector(0.f, 0.f, 100.f)); }
 				}
 			}
 			if (S.Czas <= 0.f)
@@ -1126,6 +1190,14 @@ void AOsadaRodu::NowyCel(int32 k)
 	else if (Miejsca.IsValidIndex(S.Praca))
 	{
 		const FMiejsce& M = Miejsca[S.Praca];
+		if (M.bMur)
+		{
+			// Wzdluz czola budowy muru, od strony osady.
+			S.Cel = M.P + Lewa(M.Przod) * FMath::FRandRange(-500.f, 500.f) + M.Przod * FMath::FRandRange(250.f, 400.f);
+			S.Faza = EFaza::DoPracy;
+			L->WalkaIdz(S.Cel, Chod);
+			return;
+		}
 		// Przed budynkiem, od strony ulicy (front), w roznych miejscach wzdluz sciany.
 		S.Cel = M.P + M.Przod * (M.B->Polowa.Y + 250.f) + Lewa(M.Przod) * (FMath::FRandRange(-1.f, 1.f) * M.B->Polowa.X * 0.6f);
 	}
@@ -1143,7 +1215,8 @@ void AOsadaRodu::Zaludnij()
 	TArray<int32> Prace, Domy;
 	for (int32 i = 0; i < Miejsca.Num(); ++i)
 	{
-		if (Miejsca[i].bBudowa) { Prace.Append({ i, i, i }); }
+		if (Miejsca[i].bMur) { Prace.Append({ i, i, i, i, i }); }
+		else if (Miejsca[i].bBudowa) { Prace.Append({ i, i, i }); }
 		else if (Miejsca[i].B->Funkcja == EFunkcja::Mieszkalny) { Domy.Add(i); }
 	}
 	for (int32 i = 0; i < Miejsca.Num(); ++i)

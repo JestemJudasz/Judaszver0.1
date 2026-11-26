@@ -79,6 +79,8 @@ struct FRod
 	int32 Mury = 0;
 	bool bGlodny = false;         // przy ostatnim posilku zabraklo jedzenia (rozpuszcza wojow do 1/4 rodzin)
 	static constexpr int32 BudujeMury = -2; // Buduje: w budowie kolejny pierscien murow
+	/** Czas budowy pierscienia o numerze Mury (0 palisada, 1 mur kamienny): ARody::Decyduj i widok muru w AOsadaRodu. */
+	static constexpr float CzasMuru(int32 Mury) { return Mury == 0 ? 150.f : 300.f; }
 	float Obrona() const { return 1.f + 0.3f * Mury; } // mnoznik sily obroncy za murami
 
 	int32 Sila() const { return Woje * 3 + Rodzin; }
