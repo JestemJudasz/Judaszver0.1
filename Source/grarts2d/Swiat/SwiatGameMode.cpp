@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Swiat/SwiatGameMode.cpp
+﻿// Plik: Source/grarts2d/Swiat/SwiatGameMode.cpp
 #include "Swiat/SwiatGameMode.h"
 #include "Swiat/SwiatWysokosci.h"
 #include "Swiat/TerenKafle.h"
@@ -27,6 +27,8 @@
 #include "Misc/CommandLine.h"
 #include "TimerManager.h"
 #include "Gra/ZapisGry.h"
+#include "UI/Minimapa.h"
+#include "Widgets/Layout/SBox.h"
 
 ASwiatGameMode::ASwiatGameMode()
 {
@@ -179,6 +181,16 @@ void ASwiatGameMode::PokazEkranLadowania()
 			.ShadowOffset(FVector2D(1.f, 1.f))
 		];
 	GEngine->GameViewport->AddViewportWidgetContent(Nakladka.ToSharedRef(), 100);
+	// Minimapa (P5): prawy dolny rog, nad napisem postepu; klik przenosi kamere, M chowa.
+	Minimapa = SNew(SBox)
+		.HAlign(HAlign_Right)
+		.VAlign(VAlign_Bottom)
+		.Padding(FMargin(0.f, 0.f, 22.f, 52.f))
+		.Visibility_Lambda([this]() { return bMinimapa && bBylWczytany ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
+		[
+			SNew(SMinimapa).Swiat(GetWorld())
+		];
+	GEngine->GameViewport->AddViewportWidgetContent(Minimapa.ToSharedRef(), 45);
 }
 
 void ASwiatGameMode::Tick(float DeltaSeconds)
@@ -188,6 +200,10 @@ void ASwiatGameMode::Tick(float DeltaSeconds)
 	if (const APlayerController* PC = GetWorld()->GetFirstPlayerController())
 	{
 		const AKameraMapy* Kam = Cast<AKameraMapy>(PC->GetPawn());
+		if (PC->WasInputKeyJustPressed(FUstawienia::Klawisz("Minimapa")))
+		{
+			bMinimapa = !bMinimapa;
+		}
 		if (PC->WasInputKeyJustPressed(EKeys::F10) || (PC->WasInputKeyJustPressed(EKeys::Escape) && Kam && !Kam->WRegionie()))
 		{
 			SMenuGlowne::Otworz(GetWorld(), false);
@@ -201,7 +217,9 @@ void ASwiatGameMode::Tick(float DeltaSeconds)
 	const int32 Proc = FMath::RoundToInt32(Teren->Postep() * 100.f);
 	if (!bWczytano)
 	{
-		NapisDuzy->SetText(FText::FromString(FString::Printf(TEXT("%s... %d%%"), *TekstLadowania, Proc)));
+		// P5 (26.11.2026): bez ekranu wczytywania przy przejsciu mapa <-> region; postep maly w rogu, swiat widac od razu.
+		const FText Postep = FText::FromString(FString::Printf(TEXT("%s... %d%%"), *TekstLadowania, Proc));
+		(Tlo.IsValid() && Tlo->GetVisibility() != EVisibility::Collapsed ? NapisDuzy : NapisMaly)->SetText(Postep);
 		// Pol sekundy zapasu: nowe drzewa i kafle zdaza sie narysowac, zanim zniknie zaslona.
 		CzasGotowy = bGotowe ? CzasGotowy + DeltaSeconds : 0.f;
 		if (CzasGotowy >= 0.5f)
@@ -218,6 +236,7 @@ void ASwiatGameMode::Tick(float DeltaSeconds)
 void ASwiatGameMode::PoWczytaniu()
 {
 	bWczytano = true;
+	bBylWczytany = true;
 	Tlo->SetVisibility(EVisibility::Collapsed);
 
 	// Kontrola wygladu bez klikania: -zrzut => 2 s po wczytaniu zrzut do Saved/Screenshots i wyjscie (-odl=cm wybiera wysokosc).
@@ -261,7 +280,9 @@ void ASwiatGameMode::Zaslon(const TCHAR* Tekst)
 	TekstLadowania = Tekst;
 	bWczytano = false;
 	CzasGotowy = 0.f;
-	if (Tlo.IsValid())
+	// Zaslona tylko przy pierwszym starcie (pod menu albo do zrzutu kontrolnego); potem przejscia bez czarnego ekranu.
+	const bool bZaslona = FParse::Param(FCommandLine::Get(), TEXT("zrzut")) || FParse::Param(FCommandLine::Get(), TEXT("zaslona"));
+	if (Tlo.IsValid() && bZaslona)
 	{
 		Tlo->SetVisibility(EVisibility::HitTestInvisible);
 		NapisMaly->SetText(FText::GetEmpty());
@@ -325,6 +346,11 @@ void ASwiatGameMode::EndPlay(const EEndPlayReason::Type Reason)
 		GEngine->GameViewport->RemoveViewportWidgetContent(Nakladka.ToSharedRef());
 	}
 	Nakladka.Reset();
+	if (Minimapa.IsValid() && GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(Minimapa.ToSharedRef());
+	}
+	Minimapa.Reset();
 	SMenuGlowne::Zamknij();
 	Super::EndPlay(Reason);
 }

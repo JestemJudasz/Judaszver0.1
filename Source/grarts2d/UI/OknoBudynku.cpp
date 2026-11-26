@@ -885,8 +885,9 @@ TSharedRef<SWidget> SOknoBudynku::CzescUlepszenia()
 				return FText::GetEmpty();
 			}
 			const FRodzajBudynku* N = Nastepny();
-			return FText::FromString(N ? FString::Printf(TEXT("Poziom %d z 3. Następny: %s"), B->Rodzaj().Poziom, *N->Nazwa)
-				: FString::Printf(TEXT("Poziom %d z 3: najwyższy."), B->Rodzaj().Poziom));
+			const int32 Max = B->Rodzaj().NajwyzszyPoziom().Poziom;
+			return FText::FromString(N ? FString::Printf(TEXT("Poziom %d z %d. Następny: %s"), B->Rodzaj().Poziom, Max, *N->Nazwa)
+				: FString::Printf(TEXT("Poziom %d z %d: najwyższy."), B->Rodzaj().Poziom, Max));
 		})
 		.Font(Czcionka(11, true))
 		.ColorAndOpacity(Napis)

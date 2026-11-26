@@ -157,6 +157,8 @@ public:
 	FString NapisPoziomu() const;
 	/** Podpowiedz: warunki nastepnego poziomu, co spelnione, co odblokowuje. */
 	FString OpisPoziomu() const;
+	/** P7: okno rozwoju osady - pilne braki, co dalej, warunki awansu. */
+	FString RozwojOsady() const;
 	/** Pusty napis = wolno stawiac R; inaczej "Wymaga: wieś". */
 	FString CzemuZablokowany(const FRodzajBudynku& R) const;
 

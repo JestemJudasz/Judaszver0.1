@@ -714,7 +714,7 @@ void ADrogi::Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVec
 	const FLinearColor Kolory[K] = { Brzeg, Pobocze, Koleina, Srodek, Koleina, Pobocze, Brzeg };
 	auto Punkt = [&](FVector2D Q, float A, FLinearColor K, float Dz = 0.f)
 	{
-		const float H = FSwiat::Wysokosc(Q.X, Q.Y);
+		const float H = FSwiat::WysokoscKafla(Q.X, Q.Y); // 26.11.2026: droga nie chowa sie pod trojkatami terenu na wypuklym zboczu
 		const float Hx = FSwiat::Wysokosc(Q.X + 50.0, Q.Y) - FSwiat::Wysokosc(Q.X - 50.0, Q.Y);
 		const float Hy = FSwiat::Wysokosc(Q.X, Q.Y + 50.0) - FSwiat::Wysokosc(Q.X, Q.Y - 50.0);
 		V.Add(FVector(Q.X - Baza.X, Q.Y - Baza.Y, H + Nad + Dz - Baza.Z));

@@ -328,6 +328,17 @@ bool FZapisGry::Zapisz(UWorld* W, int32 Slot, FString& Blad)
 		J->SetBoolField(TEXT("U"), B->bUlepszanie);
 		J->SetNumberField(TEXT("OX"), R.Obszar.X);
 		J->SetNumberField(TEXT("OY"), R.Obszar.Y);
+		if (R.ZWielokatem())
+		{
+			FTab Wk; // rogi plotu w swiecie: po wczytaniu FRodzajBudynku::NaWielokat liczy z nich to samo
+			for (const FVector2D& Lw : R.Wielokat)
+			{
+				const FVector2D S = B->ZUkladu(Lw);
+				Dodaj(Wk, S.X);
+				Dodaj(Wk, S.Y);
+			}
+			J->SetArrayField(TEXT("Wk"), Wk);
+		}
 		J->SetBoolField(TEXT("Darmo"), R.Koszt.Puste());
 		J->SetArrayField(TEXT("Zapas"), Surowce(B->Zapas));
 		J->SetArrayField(TEXT("Dost"), Surowce(B->Dostarczone));
@@ -545,7 +556,23 @@ void FZapisGry::Zastosuj(UWorld* W)
 		}
 		FRodzajBudynku Typ = *R;
 		const float OX = float(Num(J, TEXT("OX"))), OY = float(Num(J, TEXT("OY")));
-		if (R->ObszarMax.X > 0.f && OX > 0.f)
+		const FTab& Wk = Tablica(J, TEXT("Wk"));
+		if (Wk.Num() >= 6)
+		{
+			TArray<FVector2D> Pkt;
+			for (int32 i = 0; i + 1 < Wk.Num(); i += 2)
+			{
+				Pkt.Add(FVector2D(Element(Wk, i), Element(Wk, i + 1)));
+			}
+			FVector2D G;
+			float Ob = 0.f;
+			FRodzajBudynku Nowy;
+			if (FRodzajBudynku::NaWielokat(*R, Pkt, Nowy, G, Ob).IsEmpty())
+			{
+				Typ = Nowy;
+			}
+		}
+		else if (R->ObszarMax.X > 0.f && OX > 0.f)
 		{
 			Typ = FRodzajBudynku::NaObszar(*R, OX, OY);
 		}

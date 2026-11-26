@@ -1,5 +1,6 @@
-// Plik: Source/grarts2d/Budowy/Budowa.cpp
+﻿// Plik: Source/grarts2d/Budowy/Budowa.cpp
 #include "Budowy/Budowa.h"
+#include "Algo/Reverse.h"
 #include "Swiat/SwiatWysokosci.h"
 #include "Efekty/Efekty.h"
 #include "Dzwiek/Dzwieki.h"
@@ -275,6 +276,71 @@ const FRodzajBudynku& FRodzajBudynku::PlacSkladowy()
 		K.Stosy[int32(ESurowiec::Deska)] = FVector2D(240.f, 80.f);
 		K.Stosy[int32(ESurowiec::Kamien)] = FVector2D(260.f, -230.f);
 		K.Stosy[int32(ESurowiec::Opal)] = FVector2D(-260.f, -230.f); // paczka A: drewno opalowe
+		K.Poziom = 1;
+		K.Ulepszenie = &PlacSkladowy2;
+		return K;
+	}();
+	return R;
+}
+
+// Wieksze sklady po ulepszeniu (26.11.2026, uwaga z gry: "wieksze sklady po ulepszeniu"). Modele: Tools/budynki.py plac_skladowy(f, poziom).
+const FRodzajBudynku& FRodzajBudynku::PlacSkladowy2()
+{
+	static const FRodzajBudynku R = []()
+	{
+		FRodzajBudynku K = PlacSkladowy();
+		K.Nazwa = TEXT("Duży plac składowy");
+		K.Opis = TEXT("Większy plac z dwiema wiatami: mieści 50 sztuk każdego materiału zamiast 30.");
+		K.Model = TEXT("SM_PlacSkladowy2");
+		K.Koszt = FSurowce(6, 4, 0);
+		K.CzasBudowy = 100.f;
+		K.Polowa = FVector2D(680.f, 530.f);   // plac 13 x 10 m
+		K.Promien = 900.f;
+		K.ObwodMin = FVector2D(-720.f, -570.f);
+		K.ObwodMax = FVector2D(720.f, 570.f);
+		K.Sterta = FVector2D(-150.f, 330.f);
+		K.ZrzutX = FVector2D(-550.f, -250.f);
+		K.ZrzutY = 500.f;
+		K.Wejscie = FVector2D(0.f, 570.f);
+		K.Pojemnosc = 50;
+		K.Stosy[int32(ESurowiec::Kloda)] = FVector2D(-340.f, 130.f);
+		K.Stosy[int32(ESurowiec::Deska)] = FVector2D(330.f, 130.f);
+		K.Stosy[int32(ESurowiec::Kamien)] = FVector2D(330.f, -190.f);
+		K.Stosy[int32(ESurowiec::Opal)] = FVector2D(-340.f, -190.f);
+		K.Poziom = 2;
+		K.Wymaga = 1; // wies
+		K.Ulepszenie = &PlacSkladowy3;
+		return K;
+	}();
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::PlacSkladowy3()
+{
+	static const FRodzajBudynku R = []()
+	{
+		FRodzajBudynku K = PlacSkladowy2();
+		K.Nazwa = TEXT("Skład z szopą");
+		K.Opis = TEXT("Duży skład z wiatą i zamkniętą szopą: mieści 80 sztuk każdego materiału.");
+		K.Model = TEXT("SM_PlacSkladowy3");
+		K.Koszt = FSurowce(8, 8, 4);
+		K.CzasBudowy = 140.f;
+		K.Polowa = FVector2D(830.f, 630.f);   // plac 16 x 12 m
+		K.Promien = 1080.f;
+		K.ObwodMin = FVector2D(-870.f, -670.f);
+		K.ObwodMax = FVector2D(870.f, 670.f);
+		K.Sterta = FVector2D(-150.f, 420.f);
+		K.ZrzutX = FVector2D(-650.f, -300.f);
+		K.ZrzutY = 600.f;
+		K.Wejscie = FVector2D(0.f, 670.f);
+		K.Pojemnosc = 80;
+		K.Stosy[int32(ESurowiec::Kloda)] = FVector2D(-420.f, 170.f);
+		K.Stosy[int32(ESurowiec::Deska)] = FVector2D(400.f, 170.f);
+		K.Stosy[int32(ESurowiec::Kamien)] = FVector2D(140.f, -60.f);
+		K.Stosy[int32(ESurowiec::Opal)] = FVector2D(-420.f, -170.f);
+		K.Poziom = 3;
+		K.Wymaga = 2; // osada targowa
+		K.Ulepszenie = nullptr;
 		return K;
 	}();
 	return R;
@@ -615,6 +681,35 @@ const FRodzajBudynku& FRodzajBudynku::Spichlerz()
 		K.Stosy[int32(ESurowiec::Jedzenie)] = FVector2D(-210.f, 340.f);
 		K.Stosy[int32(ESurowiec::Zboze)] = FVector2D(-470.f, 600.f);
 		K.Stosy[int32(ESurowiec::Maka)] = FVector2D(420.f, 520.f);
+		K.Poziom = 1;
+		K.Ulepszenie = &Spichlerz2;
+		return K;
+	}();
+	return R;
+}
+
+const FRodzajBudynku& FRodzajBudynku::Spichlerz2()
+{
+	static const FRodzajBudynku R = []()
+	{
+		FRodzajBudynku K = Spichlerz();
+		K.Nazwa = TEXT("Duży spichlerz");
+		K.Opis = TEXT("Dłuższy spichlerz z dwojgiem drzwi i przybudówką: mieści 70 sztuk każdego jedzenia zamiast 40.");
+		K.Model = TEXT("SM_Spichlerz2");
+		K.Koszt = FSurowce(6, 6, 4);
+		K.CzasBudowy = 180.f;
+		K.Polowa = FVector2D(600.f, 470.f);   // 10,8 x 4,8 m
+		K.Promien = 980.f;
+		K.ObwodMin = FVector2D(-620.f, -320.f);
+		K.ObwodMax = FVector2D(620.f, 320.f);
+		K.ZrzutX = FVector2D(-450.f, 450.f);
+		K.Pojemnosc = 70;
+		K.Stosy[int32(ESurowiec::Zboze)] = FVector2D(-650.f, 600.f);
+		K.Stosy[int32(ESurowiec::Jedzenie)] = FVector2D(-400.f, 380.f); // obok schodkow do lewych drzwi
+		K.Stosy[int32(ESurowiec::Maka)] = FVector2D(600.f, 520.f);
+		K.Poziom = 2;
+		K.Wymaga = 1;
+		K.Ulepszenie = nullptr;
 		return K;
 	}();
 	return R;
@@ -1156,6 +1251,10 @@ FBox2D FRodzajBudynku::Obrys() const
 FString FRodzajBudynku::OpisObszaru() const
 {
 	const int32 M2 = FMath::RoundToInt32(Metry2());
+	if (ZWielokatem())
+	{
+		return FString::Printf(TEXT("%d boków, %s ha (%d m²)"), Wielokat.Num(), *FString::Printf(TEXT("%.2f"), M2 / 1e4f).Replace(TEXT("."), TEXT(",")), M2);
+	}
 	return FString::Printf(TEXT("%d × %d m, %s ha (%d m²)"), FMath::RoundToInt32(Obszar.X / 100.f), FMath::RoundToInt32(Obszar.Y / 100.f),
 		*FString::Printf(TEXT("%.2f"), M2 / 1e4f).Replace(TEXT("."), TEXT(",")), M2);
 }
@@ -1221,6 +1320,286 @@ FRodzajBudynku FRodzajBudynku::NaObszar(const FRodzajBudynku& Baza, float W, flo
 		K.CzasBudowy = 90.f + Plotu * 0.85f;
 	}
 	return K;
+}
+
+// --- Pola i owczarnie dowolnym ksztaltem (26.11.2026) ---
+
+namespace
+{
+	double DoOdcinka(FVector2D P, FVector2D A, FVector2D B)
+	{
+		const FVector2D AB = B - A;
+		const double L2 = AB.SizeSquared();
+		const double T = L2 > 0.0 ? FMath::Clamp(((P - A) | AB) / L2, 0.0, 1.0) : 0.0;
+		return FVector2D::Distance(P, A + AB * T);
+	}
+
+	bool Przecinaja(FVector2D A, FVector2D B, FVector2D C, FVector2D D)
+	{
+		auto Strona = [](FVector2D P, FVector2D Q, FVector2D R) { return (Q.X - P.X) * (R.Y - P.Y) - (Q.Y - P.Y) * (R.X - P.X); };
+		const double D1 = Strona(C, D, A), D2 = Strona(C, D, B), D3 = Strona(A, B, C), D4 = Strona(A, B, D);
+		return ((D1 > 0) != (D2 > 0)) && ((D3 > 0) != (D4 > 0));
+	}
+}
+
+bool FRodzajBudynku::WWielokacie(FVector2D L) const
+{
+	if (!ZWielokatem())
+	{
+		return true;
+	}
+	bool bW = false;
+	for (int32 i = 0, j = Wielokat.Num() - 1; i < Wielokat.Num(); j = i++)
+	{
+		const FVector2D& A = Wielokat[i];
+		const FVector2D& B = Wielokat[j];
+		if ((A.Y > L.Y) != (B.Y > L.Y) && L.X < (B.X - A.X) * (L.Y - A.Y) / (B.Y - A.Y) + A.X)
+		{
+			bW = !bW;
+		}
+	}
+	return bW;
+}
+
+float FRodzajBudynku::OdBrzegu(FVector2D L) const
+{
+	if (!ZWielokatem())
+	{
+		return float(FMath::Min(FMath::Min(L.X - PlotMin.X, PlotMax.X - L.X), FMath::Min(L.Y - PlotMin.Y, PlotMax.Y - L.Y)));
+	}
+	double D = TNumericLimits<double>::Max();
+	for (int32 i = 0; i < Wielokat.Num(); ++i)
+	{
+		D = FMath::Min(D, DoOdcinka(L, Wielokat[i], Wielokat[(i + 1) % Wielokat.Num()]));
+	}
+	return float(WWielokacie(L) ? D : -D);
+}
+
+bool FRodzajBudynku::NaPastwisku(FVector2D L) const
+{
+	if (!ZWielokatem())
+	{
+		return FMath::Abs(L.X) <= Zagroda.X && L.Y >= 80.0 && L.Y <= Zagroda.Y;
+	}
+	if (OdBrzegu(L) < 80.f)
+	{
+		return false;
+	}
+	return !(L.X > BudynekMin.X - 100.0 && L.X < BudynekMax.X + 100.0 && L.Y > BudynekMin.Y - 100.0 && L.Y < BudynekMax.Y + 100.0);
+}
+
+FVector2D FRodzajBudynku::PunktPastwiska() const
+{
+	if (!ZWielokatem())
+	{
+		return FVector2D(FMath::FRandRange(-Zagroda.X, Zagroda.X), FMath::FRandRange(80.0, Zagroda.Y));
+	}
+	for (int32 k = 0; k < 40; ++k)
+	{
+		const FVector2D Q(FMath::FRandRange(PlotMin.X, PlotMax.X), FMath::FRandRange(PlotMin.Y, PlotMax.Y));
+		if (NaPastwisku(Q))
+		{
+			return Q;
+		}
+	}
+	return FVector2D(Wejscie.X, Wejscie.Y - 300.f);
+}
+
+FString FRodzajBudynku::NaWielokat(const FRodzajBudynku& Baza, const TArray<FVector2D>& Punkty, FRodzajBudynku& Out, FVector2D& Gdzie, float& ObrotSt)
+{
+	if (Baza.ObszarMax.X <= 0.f)
+	{
+		return TEXT("Ten budynek nie ma obszaru");
+	}
+	TArray<FVector2D> P = Punkty;
+	// Punkty blizej niz 1 m od poprzedniego wypadaja (podwojny klik).
+	for (int32 i = P.Num() - 1; i > 0 && P.Num() > 3; --i)
+	{
+		if (FVector2D::Distance(P[i], P[i - 1]) < 100.0)
+		{
+			P.RemoveAt(i);
+		}
+	}
+	if (P.Num() > 3 && FVector2D::Distance(P.Last(), P[0]) < 100.0)
+	{
+		P.Pop(); // zamkniecie klikiem w pierwszy punkt
+	}
+	const int32 N = P.Num();
+	if (N < 3)
+	{
+		return TEXT("Potrzeba co najmniej 3 punktów");
+	}
+	double Pole2 = 0.0;
+	for (int32 i = 0; i < N; ++i)
+	{
+		Pole2 += P[i].X * P[(i + 1) % N].Y - P[(i + 1) % N].X * P[i].Y;
+	}
+	if (Pole2 < 0.0)
+	{
+		Algo::Reverse(P);
+		Pole2 = -Pole2;
+	}
+	for (int32 i = 0; i < N; ++i)
+	{
+		for (int32 j = i + 2; j < N; ++j)
+		{
+			if ((j + 1) % N == i)
+			{
+				continue; // sasiednie boki
+			}
+			if (Przecinaja(P[i], P[(i + 1) % N], P[j], P[(j + 1) % N]))
+			{
+				return TEXT("Boki płotu się przecinają");
+			}
+		}
+	}
+	const double Pole = Pole2 * 0.5;
+	const double PoleMin = double(Baza.ObszarMin.X) * Baza.ObszarMin.Y, PoleMax = double(Baza.ObszarMax.X) * Baza.ObszarMax.Y;
+	if (Pole < PoleMin)
+	{
+		return FString::Printf(TEXT("Za mały: %d m², najmniej %d m²"), FMath::RoundToInt32(Pole / 1e4), FMath::RoundToInt32(PoleMin / 1e4));
+	}
+	if (Pole > PoleMax)
+	{
+		return FString::Printf(TEXT("Za duży: %d m², najwięcej %d m²"), FMath::RoundToInt32(Pole / 1e4), FMath::RoundToInt32(PoleMax / 1e4));
+	}
+	// Przod = najdluzszy bok. Os X budynku wzdluz niego (wstecz), os Y na zewnatrz: wnetrze lezy po -Y.
+	int32 Przod = 0;
+	double Obwod = 0.0, NajBok = -1.0;
+	for (int32 i = 0; i < N; ++i)
+	{
+		const double L = FVector2D::Distance(P[i], P[(i + 1) % N]);
+		Obwod += L;
+		if (L > NajBok)
+		{
+			NajBok = L;
+			Przod = i;
+		}
+	}
+	const FVector2D A = P[Przod], B = P[(Przod + 1) % N];
+	const FVector2D U = -(B - A).GetSafeNormal();
+	const FVector2D V(-U.Y, U.X);
+	TArray<FVector2D> E; // uklad boku: przod na y = 0
+	FVector2D Mn(TNumericLimits<double>::Max()), Mx(-TNumericLimits<double>::Max());
+	for (const FVector2D& Q : P)
+	{
+		E.Add(FVector2D((Q - A) | U, (Q - A) | V));
+		Mn = FVector2D(FMath::Min(Mn.X, E.Last().X), FMath::Min(Mn.Y, E.Last().Y));
+		Mx = FVector2D(FMath::Max(Mx.X, E.Last().X), FMath::Max(Mx.Y, E.Last().Y));
+	}
+	const FVector2D Roz = Mx - Mn;
+	if (FMath::Max(Roz.X, Roz.Y) > 1.5 * FMath::Max(Baza.ObszarMax.X, Baza.ObszarMax.Y))
+	{
+		return TEXT("Za długi kształt");
+	}
+	const double Mx0 = FMath::Min(E[Przod].X, E[(Przod + 1) % N].X), Mx1 = FMath::Max(E[Przod].X, E[(Przod + 1) % N].X);
+	const double Srodek = (Mx0 + Mx1) * 0.5, PolBoku = (Mx1 - Mx0) * 0.5;
+
+	// Prostokat opisany jako baza (bez przycinania do ObszarMin..Max), potem wielkosci liczone z prawdziwego pola.
+	FRodzajBudynku Wolny = Baza;
+	Wolny.ObszarMin = FVector2D(1.f, 1.f);
+	Wolny.ObszarMax = FVector2D(1e7f, 1e7f);
+	FRodzajBudynku K = NaObszar(Wolny, float(Roz.X), float(Roz.Y));
+	K.ObszarMin = Baza.ObszarMin;
+	K.ObszarMax = Baza.ObszarMax;
+	const float Plotu = float(Obwod / 100.0);
+
+	// Poczatek ukladu budynku: pole - srodek prostokata, owczarnia - szopa (model -6,5..6 x -4,5..0,6 m) w srodku, jak najdalej z tylu.
+	FVector2D O = (Mn + Mx) * 0.5;
+	if (Baza.Funkcja == EFunkcja::Owczarnia)
+	{
+		FRodzajBudynku Test;
+		Test.Wielokat = E;
+		const FVector2D MMin(-700.0, -500.0), MMax(650.0, 110.0);
+		double Naj = TNumericLimits<double>::Max();
+		bool bJest = false;
+		for (double Y = Mn.Y - MMin.Y; Y <= -MMax.Y - 150.0; Y += 100.0)
+		{
+			for (double X = Mn.X - MMin.X; X <= Mx.X - MMax.X; X += 100.0)
+			{
+				bool bOk = true;
+				for (int32 a = 0; a <= 2 && bOk; ++a)
+				{
+					for (int32 b = 0; b <= 2 && bOk; ++b)
+					{
+						const FVector2D Q(X + FMath::Lerp(MMin.X, MMax.X, a * 0.5), Y + FMath::Lerp(MMin.Y, MMax.Y, b * 0.5));
+						bOk = Test.OdBrzegu(Q) >= 30.f;
+					}
+				}
+				const double Ocena = (Y - Mn.Y) + 0.5 * FMath::Abs(X - Srodek);
+				if (bOk && Ocena < Naj)
+				{
+					Naj = Ocena;
+					O = FVector2D(X, Y);
+					bJest = true;
+				}
+			}
+		}
+		if (!bJest)
+		{
+			return TEXT("Za ciasno na szopę owczarni (potrzeba ok. 14 × 6 m w środku)");
+		}
+	}
+	K.Wielokat.Reset();
+	for (const FVector2D& Q : E)
+	{
+		K.Wielokat.Add(Q - O);
+	}
+	K.PrzodWielokata = Przod;
+	K.PoleWielokata = float(Pole);
+	K.ObwodWielokata = float(Obwod);
+	K.Obszar = FVector2D(Roz);
+	K.PlotMin = Mn - O;
+	K.PlotMax = Mx - O;
+	K.SrodekObszaru = (Mn + Mx) * 0.5 - O;
+	const double Ye = -O.Y;          // przod (y boku w ukladzie budynku)
+	const double Xm = Srodek - O.X;  // srodek przedniego boku
+	const FVector2D Daleko(FMath::Max(FMath::Abs(K.PlotMin.X), FMath::Abs(K.PlotMax.X)), FMath::Max(FMath::Abs(K.PlotMin.Y), FMath::Abs(K.PlotMax.Y)));
+	K.Polowa = Daleko + FVector2D(50.0);
+	K.Promien = float(Daleko.Size()) + 150.f;
+	K.ObwodMin = K.PlotMin - FVector2D(80.0);
+	K.ObwodMax = K.PlotMax + FVector2D(80.0);
+	const float Bok = float(FMath::Max(100.0, PolBoku - 100.0));
+	if (Baza.Funkcja == EFunkcja::Pole)
+	{
+		const float F = float(Pole / (2000.0 * 1400.0));
+		K.CzynnikObszaru = F;
+		K.Brama = FVector2D(Xm - 140.0, Xm + 140.0);
+		K.UprawaMin = K.PlotMin + FVector2D(60.0);
+		K.UprawaMax = K.PlotMax - FVector2D(60.0);
+		K.Sterta = FVector2D(Xm - FMath::Min(400.f, Bok), Ye + 120.0);
+		K.ZrzutX = FVector2D(Xm - FMath::Min(600.f, Bok), Xm + FMath::Min(600.f, Bok));
+		K.ZrzutY = float(Ye + 20.0);
+		K.Wejscie = FVector2D(Xm, Ye + 100.0);
+		K.Plon = FMath::Max(4, FMath::RoundToInt32(20.f * F));
+		K.Pojemnosc = FMath::Max(20, K.Plon);
+		K.Miejsc = FMath::Clamp(FMath::RoundToInt32(2.f * F), 1, 8);
+		K.Koszt = FSurowce(FMath::Max(2, FMath::RoundToInt32(Plotu / 30.f)), 0, 0);
+		K.CzasBudowy = 40.f * Plotu / 68.f;
+		K.Stosy[int32(ESurowiec::Zboze)] = FVector2D(Xm + FMath::Min(250.f, Bok), Ye - 140.0);
+	}
+	else
+	{
+		const double Gx = FMath::Clamp(Xm + 380.0, Xm - PolBoku + 150.0, Xm + PolBoku - 150.0);
+		K.Brama = FVector2D(Gx - 80.0, Gx + 80.0);
+		K.Wejscie = FVector2D(Gx, Ye + 80.0);
+		K.Stanowisko = FVector2D(Gx - 70.0, Ye - 180.0);
+		K.Stosy[int32(ESurowiec::Welna)] = FVector2D(Gx + 200.0, Ye + 90.0);
+		K.Sterta = FVector2D(Xm, Ye + 150.0);
+		K.ZrzutX = FVector2D(Xm - FMath::Min(300.f, Bok), Xm + FMath::Min(300.f, Bok));
+		K.ZrzutY = float(Ye + 60.0);
+		K.CzynnikObszaru = float(Pole / (1400.0 * 1000.0));
+		const float Pastwisko = float(Pole / 1e4) - 30.f; // bez szopy
+		K.Owiec = FMath::Clamp(FMath::RoundToInt32(Pastwisko / 11.f), 4, 30);
+		K.Miejsc = FMath::Clamp(FMath::CeilToInt32(K.Owiec / 10.f), 1, 3);
+		K.Pojemnosc = 12 + K.Owiec / 2;
+		K.Koszt = FSurowce(4 + FMath::RoundToInt32(Plotu / 12.f), 4, 0);
+		K.CzasBudowy = 90.f + Plotu * 0.85f;
+	}
+	Gdzie = A + U * O.X + V * O.Y;
+	ObrotSt = float(FMath::RadiansToDegrees(FMath::Atan2(U.Y, U.X)));
+	Out = K;
+	return FString();
 }
 
 // Woly (23.11.2026, prosba uzytkownika): zagroda daje osadzie woly, ktore ciagna klody (Ludzie/Wol.h). Bez rodzin.
@@ -1523,7 +1902,7 @@ void ABudowa::Ustaw(const FRodzajBudynku& Rodzaj, bool bPodglad)
 		for (int32 k = 0; k < Rodzaj.Owiec; ++k)
 		{
 			FOwca O;
-			O.Poz = FVector2D(FMath::FRandRange(-Pas.X, Pas.X), FMath::FRandRange(80.0, Pas.Y));
+			O.Poz = Rodzaj.PunktPastwiska(); // 26.11.2026: tez pastwisko dowolnym ksztaltem
 			O.Cel = O.Poz;
 			O.Kierunek = FMath::FRandRange(0.f, 360.f);
 			O.Postoj = FMath::FRandRange(0.f, 6.f);
@@ -1588,13 +1967,36 @@ void ABudowa::Ustaw(const FRodzajBudynku& Rodzaj, bool bPodglad)
 		}
 		// Odcinki plotu po kolei wokol prostokata, od bramy w lewo (front = +Y), co ok. 2 m; ostatni konczy sie slupkiem przy bramie.
 		const FVector2D A = Rodzaj.PlotMin, B = Rodzaj.PlotMax;
-		const FVector2D Biegi[][2] = {
-			{ FVector2D(Rodzaj.Brama.X, B.Y), FVector2D(A.X, B.Y) },
-			{ FVector2D(A.X, B.Y), FVector2D(A.X, A.Y) },
-			{ FVector2D(A.X, A.Y), FVector2D(B.X, A.Y) },
-			{ FVector2D(B.X, A.Y), FVector2D(B.X, B.Y) },
-			{ FVector2D(B.X, B.Y), FVector2D(Rodzaj.Brama.Y, B.Y) } };
-		for (const auto& Bieg : Biegi)
+		TArray<TArray<FVector2D>> Biegi;
+		FVector2D Koniec(Rodzaj.Brama.Y, B.Y);
+		if (Rodzaj.ZWielokatem())
+		{
+			// Wielokat (26.11.2026): od bramy wzdluz przedniego boku, potem kolejne wierzcholki wstecz, do drugiego slupka bramy.
+			const TArray<FVector2D>& W = Rodzaj.Wielokat;
+			const int32 Nw = W.Num(), I = FMath::Clamp(Rodzaj.PrzodWielokata, 0, Nw - 1);
+			const double Ye = W[I].Y;
+			TArray<FVector2D> Droga = { FVector2D(Rodzaj.Brama.Y, Ye) };
+			for (int32 k = 0; k < Nw; ++k)
+			{
+				Droga.Add(W[(I - k + Nw) % Nw]);
+			}
+			Droga.Add(FVector2D(Rodzaj.Brama.X, Ye));
+			for (int32 k = 0; k + 1 < Droga.Num(); ++k)
+			{
+				Biegi.Add({ Droga[k], Droga[k + 1] });
+			}
+			Koniec = Droga.Last();
+		}
+		else
+		{
+			Biegi = {
+				{ FVector2D(Rodzaj.Brama.X, B.Y), FVector2D(A.X, B.Y) },
+				{ FVector2D(A.X, B.Y), FVector2D(A.X, A.Y) },
+				{ FVector2D(A.X, A.Y), FVector2D(B.X, A.Y) },
+				{ FVector2D(B.X, A.Y), FVector2D(B.X, B.Y) },
+				{ FVector2D(B.X, B.Y), FVector2D(Rodzaj.Brama.Y, B.Y) } };
+		}
+		for (const TArray<FVector2D>& Bieg : Biegi)
 		{
 			const double L = FVector2D::Distance(Bieg[0], Bieg[1]);
 			if (L < 10.0)
@@ -1607,7 +2009,7 @@ void ABudowa::Ustaw(const FRodzajBudynku& Rodzaj, bool bPodglad)
 				Odcinki.Add(TPair<FVector2D, FVector2D>(FMath::Lerp(Bieg[0], Bieg[1], double(i) / N), FMath::Lerp(Bieg[0], Bieg[1], double(i + 1) / N)));
 			}
 		}
-		Konce.Add(FVector2D(Rodzaj.Brama.Y, B.Y));
+		Konce.Add(Koniec);
 	}
 	if (bPodglad)
 	{
@@ -2046,15 +2448,7 @@ void ABudowa::UstawWzrost(float W)
 // FSwiat::Wysokosc, wiec lan liczony z samej FSwiat::Wysokosc chowal sie pod terenem. Bierzemy wieksza z obu.
 static float WysokoscNaSiatce(double X, double Y)
 {
-	constexpr double K = 400.0;
-	const double Gx = (X + FSwiat::Polowa) / K, Gy = (Y + FSwiat::Polowa) / K;
-	const double I = FMath::FloorToDouble(Gx), J = FMath::FloorToDouble(Gy);
-	const double Fx = Gx - I, Fy = Gy - J;
-	const double X0 = I * K - FSwiat::Polowa, Y0 = J * K - FSwiat::Polowa;
-	auto W = [](double Px, double Py) { return FMath::Max(0.0, double(FSwiat::Wysokosc(Px, Py))); };
-	const double HA = W(X0, Y0), HB = W(X0 + K, Y0), HC = W(X0 + K, Y0 + K), HE = W(X0, Y0 + K);
-	const double H = Fx >= Fy ? HA + Fx * (HB - HA) + Fy * (HC - HB) : HA + Fy * (HE - HA) + Fx * (HC - HE);
-	return float(FMath::Max(H, double(FSwiat::Wysokosc(X, Y))));
+	return FSwiat::WysokoscKafla(X, Y); // 26.11.2026: wspolne z drogami i nasypem (Swiat/SwiatWysokosci)
 }
 
 // Lan pola (22.11.2026, zamiast kafli 5 x 5 m, ktore wisialy nad terenem): kazdy wierzcholek na wysokosci terenu,
@@ -2125,13 +2519,28 @@ void ABudowa::ZbudujLan(bool bSila)
 	TArray<FVector2D> UV;
 	TArray<bool> Jest;
 	V.Reserve((NX + 1) * Kol);
+	// Wielokat (26.11.2026): odleglosc od plotu minus 60 cm, od przedniego boku minus 2,6 m (miedza ze snopami), ujemna poza.
+	auto BrzegWielokata = [this](FVector2D L) -> double
+	{
+		const TArray<FVector2D>& Wk = RodzajB.Wielokat;
+		double D = TNumericLimits<double>::Max();
+		for (int32 e = 0; e < Wk.Num(); ++e)
+		{
+			const FVector2D A = Wk[e], AB = Wk[(e + 1) % Wk.Num()] - A;
+			const double L2 = AB.SizeSquared();
+			const double Tt = L2 > 0.0 ? FMath::Clamp(((L - A) | AB) / L2, 0.0, 1.0) : 0.0;
+			D = FMath::Min(D, FVector2D::Distance(L, A + AB * Tt) - (e == RodzajB.PrzodWielokata ? 260.0 : 60.0));
+		}
+		return RodzajB.WWielokacie(L) ? D : -FMath::Abs(D) - 100.0;
+	};
 	for (int32 i = 0; i <= NX; ++i)
 	{
 		for (int32 j = 0; j <= NY; ++j)
 		{
 			const FVector2D L = Min + Krok * FVector2D(i, j);
 			const FVector2D Q(FMath::Abs(L.X - Srodek.X) - (Pol.X - Zaokr), FMath::Abs(L.Y - Srodek.Y) - (Pol.Y - Zaokr));
-			const double Brzeg = Zaokr - FVector2D(FMath::Max(Q.X, 0.0), FMath::Max(Q.Y, 0.0)).Size() - FMath::Min(FMath::Max(Q.X, Q.Y), 0.0);
+			const double Brzeg = RodzajB.ZWielokatem() ? BrzegWielokata(L)
+				: Zaokr - FVector2D(FMath::Max(Q.X, 0.0), FMath::Max(Q.Y, 0.0)).Size() - FMath::Min(FMath::Max(Q.X, Q.Y), 0.0);
 			const double W = Brzeg - (45.0 + 45.0 * FMath::PerlinNoise2D(L * 0.006 + Ziarno));
 			Jest.Add(W > 0.0);
 			const float Skraj = FMath::SmoothStep(0.f, 160.f, float(W));
@@ -2235,7 +2644,8 @@ void ABudowa::RuszOwce(float Dt)
 					O.Poz = O.Cel;
 					O.Postoj = FMath::FRandRange(3.f, 10.f);
 					const FVector2D N = O.Poz + FVector2D(FMath::FRandRange(-260.f, 260.f), FMath::FRandRange(-200.f, 200.f));
-					O.Cel = FVector2D(FMath::Clamp(N.X, -Pas.X, Pas.X), FMath::Clamp(N.Y, 80.0, double(Pas.Y)));
+					O.Cel = RodzajB.ZWielokatem() ? (RodzajB.NaPastwisku(N) ? N : RodzajB.PunktPastwiska())
+						: FVector2D(FMath::Clamp(N.X, -Pas.X, Pas.X), FMath::Clamp(N.Y, 80.0, double(Pas.Y)));
 				}
 				else
 				{
@@ -2314,8 +2724,12 @@ void ABudowa::Podloze()
 {
 	// Zrzut 22.11.2026: plyty klepiska w modelach byly plaskie i kanciaste, gryzly sie z trawa. Teraz ziemia lezy na terenie,
 	// na spadku robi nasyp do poziomu budynku, a brzeg rwie sie w trawe jak na drodze (maska M_Droga).
-	const FLinearColor K = RodzajB.Klepisko;
-	if (bPodgladB || K.A <= 0.f || RodzajB.ZObszarem())
+	// 26.11.2026 (uwaga z gry: "lepsze dopasowanie do terenu"): kazdy budynek na spadku dostaje nasyp pod niski bok
+	// (bez klepiska: ziemia z trawa, widoczna tylko tam, gdzie jest nasyp), skarpa dluzsza przy wiekszym spadku,
+	// wysokosc jak kafel terenu (FSwiat::WysokoscKafla).
+	const bool bKlepisko = RodzajB.Klepisko.A > 0.f;
+	const FLinearColor K = bKlepisko ? RodzajB.Klepisko : FLinearColor(0.30f, 0.27f, 0.15f);
+	if (bPodgladB || RodzajB.ZObszarem())
 	{
 		if (PodlozeC)
 		{
@@ -2334,8 +2748,23 @@ void ABudowa::Podloze()
 	}
 	PodlozeC->SetWorldRotation(FRotator::ZeroRotator);
 	const FVector Baza = GetActorLocation();
-	const float Rog = 200.f, Skarpa = 400.f;
+	const float Rog = 200.f;
 	const FVector2D Pol(FMath::Max(RodzajB.Polowa.X - 50.f, Rog), FMath::Max(RodzajB.Polowa.Y - 50.f, Rog));
+	float Spad = 0.f; // ile najnizszy rog obrysu lezy pod budynkiem
+	for (const FVector2D& R : { FVector2D(-Pol.X, -Pol.Y), FVector2D(Pol.X, -Pol.Y), FVector2D(Pol.X, Pol.Y), FVector2D(-Pol.X, Pol.Y), FVector2D(0.f, 0.f) })
+	{
+		const FVector2D W = ZUkladu(R);
+		Spad = FMath::Max(Spad, float(Baza.Z) - FSwiat::WysokoscKafla(W.X, W.Y));
+	}
+	if (!bKlepisko && Spad < 15.f)
+	{
+		if (PodlozeC)
+		{
+			PodlozeC->ClearAllMeshSections();
+		}
+		return; // prawie plasko: bez nasypu
+	}
+	const float Skarpa = FMath::Clamp(250.f + 2.f * Spad, 400.f, 900.f);
 	const FVector2D Rdzen = Pol - FVector2D(Rog);
 	const int32 Nx = FMath::CeilToInt32((Pol.X + Skarpa) / 50.f), Ny = FMath::CeilToInt32((Pol.Y + Skarpa) / 50.f); // krok ok. 1 m
 	const int32 Wiersz = Ny + 1;
@@ -2353,9 +2782,9 @@ void ABudowa::Podloze()
 			const FVector2D Poza(FMath::Max(FMath::Abs(Q.X) - Rdzen.X, 0.0), FMath::Max(FMath::Abs(Q.Y) - Rdzen.Y, 0.0));
 			const float D = float(Poza.Size()) - Rog; // odleglosc od brzegu zaokraglonego prostokata (< 0 w srodku)
 			const FVector2D W = ZUkladu(Q);
-			const float H = FSwiat::Wysokosc(W.X, W.Y);
+			const float H = FSwiat::WysokoscKafla(W.X, W.Y);
 			const float Nasyp = FMath::Max(0.f, float(Baza.Z) - H) * (1.f - FMath::SmoothStep(0.f, Skarpa, D));
-			const float Alfa = FMath::Max(FMath::Clamp((150.f - D) / 250.f, 0.f, 1.f), FMath::Clamp(Nasyp / 20.f, 0.f, 1.f));
+			const float Alfa = FMath::Max(bKlepisko ? FMath::Clamp((150.f - D) / 250.f, 0.f, 1.f) : 0.f, FMath::Clamp(Nasyp / 20.f, 0.f, 1.f));
 			V.Add(FVector(W.X - Baza.X, W.Y - Baza.Y, H + Nasyp + 10.f - Baza.Z));
 			UV.Add(FVector2D((W.X - Baza.X) / 400.0, (W.Y - Baza.Y) / 400.0));
 			Kol.Add(FLinearColor(K.R, K.G, K.B, Alfa));

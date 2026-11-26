@@ -1854,45 +1854,79 @@ def przebudowa_prosta(stary, B, kamien=False):
 
 
 PLAC = (-5.0, 5.0, -4.0, 4.0)
+# Wieksze sklady po ulepszeniu (26.11.2026): poziom 2 = 13 x 10 m z dwiema wiatami, poziom 3 = 16 x 12 m z wiata i szopa.
+PLACE = {1: PLAC, 2: (-6.5, 6.5, -5.0, 5.0), 3: (-8.0, 8.0, -6.0, 6.0)}
+PLAC_B = {k: Bryla(v[0], v[1], v[2], v[3], 2.0, 0.6, t=0.2) for k, v in PLACE.items()}  # do przebudowa_prosta (rusztowanie po plocie)
 
 
-def plac_skladowy(faza):
-    """Plac skladowy: klepisko, plot z zerdzi z brama od frontu, z tylu wiata z desek (stosy towaru - w grze)."""
+def wiata(s, wx0, wx1, wy0, wy1, dach):
+    """Wiata z desek: slupy, belki, pochyly daszek (wyzej od frontu)."""
+    n = max(2, int(round((wx1 - wx0) / 2.0)))
+    for i in range(n + 1):
+        x = wx0 + 0.1 + (wx1 - wx0 - 0.2) * i / n
+        belka(s, DREWNO, (x, wy0, -0.2), (x, wy0, 2.4), 0.16, BALE)
+        belka(s, DREWNO, (x, wy1, -0.2), (x, wy1, 1.9), 0.16, BALE)
+    belka(s, DREWNO, (wx0, wy0, 2.35), (wx1, wy0, 2.35), 0.16, BALE * 0.85)
+    belka(s, DREWNO, (wx0, wy1, 1.85), (wx1, wy1, 1.85), 0.16, BALE * 0.85)
+    if dach:
+        plyta(s, DREWNO, [(wx0 - 0.3, wy0 - 0.4, 2.55), (wx1 + 0.3, wy0 - 0.4, 2.55), (wx1 + 0.3, wy1 + 0.3, 1.95), (wx0 - 0.3, wy1 + 0.3, 1.95)], 0.1, DESKA_SZCZYT)
+
+
+def plac_skladowy(faza, poziom=1):
+    """Plac skladowy: klepisko, plot z zerdzi z brama od frontu, z tylu wiata z desek (stosy towaru - w grze).
+    Poziom 2: wiekszy plac, druga wiata z prawej. Poziom 3: jeszcze wiekszy, z prawej zamknieta szopa z bali."""
     s = Siatka()
-    x0, x1, y0, y1 = PLAC
+    x0, x1, y0, y1 = PLACE[poziom]
     # ziemia w grze (ABudowa::Podloze): klepisko(s, x0 - 0.2, x1 + 0.2, y0 - 0.2, y1 + 0.2)
-    brama = (-1.6, 1.6)
+    brama = (-1.6, 1.6) if poziom == 1 else (-2.0, 2.0)
     if faza == 1:
         plot(s, x0, x1, y0, y1, brama=brama, boki="pl", zerdzie=False)
         for x, y in ((x1, y1), (x1, y0)):
             belka(s, DREWNO, (x, y, -0.2), (x, y, 1.22), 0.12, RUSZT)
         stos_belek(s, -1.5, -2.5, 4.0, 5)
         stos_belek(s, 2.0, -2.6, 4.0, 3)
-    elif faza == 2:
+        return s
+    if faza == 2:
         plot(s, x0, x1, y0, y1, brama=brama, boki="pl")
         plot(s, x0, x1, y0, y1, boki="td", zerdzie=False)
         stos_belek(s, -1.5, -2.5, 4.0, 3)
-    else:
-        plot(s, x0, x1, y0, y1, brama=brama)
-        # brama: wyzsze slupy z belka
-        for x in brama:
-            belka(s, DREWNO, (x, y0, -0.2), (x, y0, 2.4), 0.18, RUSZT)
-        belka(s, DREWNO, (brama[0] - 0.2, y0, 2.35), (brama[1] + 0.2, y0, 2.35), 0.16, RUSZT * 0.9)
-        # wiata z tylu po lewej
+        return s
+    plot(s, x0, x1, y0, y1, brama=brama)
+    for x in brama:  # brama: wyzsze slupy z belka
+        belka(s, DREWNO, (x, y0, -0.2), (x, y0, 2.4), 0.18, RUSZT)
+    belka(s, DREWNO, (brama[0] - 0.2, y0, 2.35), (brama[1] + 0.2, y0, 2.35), 0.16, RUSZT * 0.9)
+    gotowe = faza == 4
+    if poziom == 1:
         wx0, wx1, wy0, wy1 = -4.6, -0.6, 1.9, 3.8
-        for x in (wx0 + 0.1, (wx0 + wx1) / 2, wx1 - 0.1):
-            belka(s, DREWNO, (x, wy0, -0.2), (x, wy0, 2.4), 0.16, BALE)
-            belka(s, DREWNO, (x, wy1, -0.2), (x, wy1, 1.9), 0.16, BALE)
-        belka(s, DREWNO, (wx0, wy0, 2.35), (wx1, wy0, 2.35), 0.16, BALE * 0.85)
-        belka(s, DREWNO, (wx0, wy1, 1.85), (wx1, wy1, 1.85), 0.16, BALE * 0.85)
-        if faza == 4:
-            plyta(s, DREWNO, [(wx0 - 0.3, wy0 - 0.4, 2.55), (wx1 + 0.3, wy0 - 0.4, 2.55), (wx1 + 0.3, wy1 + 0.3, 1.95), (wx0 - 0.3, wy1 + 0.3, 1.95)], 0.1, DESKA_SZCZYT)
-            beczka(s, -3.8, 3.1)
-            beczka(s, -3.1, 3.2)
-            skrzynia(s, -2.0, 3.0, 0.8)
-            skrzynia(s, -1.3, 3.1, 0.6)
-        else:
-            stos_desek(s, -1.5, -2.5, 3.0, 4)
+    elif poziom == 2:
+        wx0, wx1, wy0, wy1 = -6.0, -1.6, 2.9, 4.8
+    else:
+        wx0, wx1, wy0, wy1 = -7.5, -2.5, 3.6, 5.8
+    wiata(s, wx0, wx1, wy0, wy1, gotowe)
+    if poziom == 2:
+        wiata(s, 1.0, 5.6, 2.9, 4.8, gotowe)
+    if poziom == 3:
+        # szopa z bali z dachem z gontu, drzwi od placu
+        B = Bryla(2.0, 7.4, 2.8, 5.8, 2.4, 1.9, t=0.3)
+        rng = np.random.default_rng(1870)
+        cokol(s, B.x0, B.x1, B.y0, B.y1, 0.3)
+        zrab(s, B.x0, B.x1, B.y0, B.y1, B.h, 0.3, rng)
+        drzwi_dom(s, (B.x0, B.y0 - 0.02, 0), "y", -1, 2.7, 0.3, 1.6, 2.0, DRZWI if gotowe else rgb(30, 26, 24))
+        for x, st in ((B.x0, -1), (B.x1, 1)):
+            szczyt(s, x if st < 0 else x - 0.12, B.y0, B.y1, B.h, B.k, 0.12, DESKA_SZCZYT, mat=DREWNO)
+        wiezba(s, B, kolor=BALE)
+        for st in (-1, 1):
+            polac(s, B, st, 0, 1.0 if gotowe else 0.5, okap=0.5)
+    if gotowe:
+        beczka(s, wx0 + 0.8, wy0 + 1.2)
+        beczka(s, wx0 + 1.5, wy0 + 1.3)
+        skrzynia(s, wx0 + 2.6, wy0 + 1.1, 0.8)
+        skrzynia(s, wx0 + 3.3, wy0 + 1.2, 0.6)
+        if poziom >= 2:
+            beczka(s, x1 - 0.8, y0 + 0.9)
+            skrzynia(s, x0 + 0.9, y0 + 0.9, 0.7)
+    else:
+        stos_desek(s, -1.5, -2.5, 3.0, 4)
     return s
 
 
@@ -2184,16 +2218,18 @@ def chata_mysliwego(faza):
 
 
 SPICH = Bryla(-3.6, 3.6, -2.4, 2.4, 3.4, 3.0, t=0.3)  # h liczone od gruntu (sciany od SPICH_Z)
+SPICH2 = Bryla(-5.1, 5.1, -2.4, 2.4, 3.4, 3.0, t=0.3)  # duzy spichlerz (poziom 2)
 SPICH_Z = 0.9  # podloga uniesiona na slupkach (myszy, wilgoc)
 
 
-def spichlerz(faza):
-    """Spichlerz: zrab z bali uniesiony na kamiennych slupkach, schodki do drzwi, dach z gontu z daszkiem nad drzwiami."""
+def spichlerz(faza, poziom=1):
+    """Spichlerz: zrab z bali uniesiony na kamiennych slupkach, schodki do drzwi, dach z gontu z daszkiem nad drzwiami.
+    Poziom 2 (26.11.2026): dluzszy o 3 m, drugie drzwi, wiecej slupkow."""
     s = Siatka()
     rng = np.random.default_rng(1100)
-    B = SPICH
+    B = SPICH if poziom == 1 else SPICH2
     z0 = SPICH_Z
-    for x in (B.x0 + 0.3, 0.0, B.x1 - 0.3):
+    for x in ((B.x0 + 0.3, 0.0, B.x1 - 0.3) if poziom == 1 else (B.x0 + 0.3, -1.8, 1.8, B.x1 - 0.3)):
         for y in (B.y0 + 0.3, B.y1 - 0.3):
             pudlo(s, KAMIEN, (x - 0.3, y - 0.3, -0.5), (x + 0.3, y + 0.3, z0 - 0.15), MUR_COKOL, bez_dolu=False)
             pudlo(s, KAMIEN, (x - 0.4, y - 0.4, z0 - 0.18), (x + 0.4, y + 0.4, z0 - 0.06), MUR_COKOL * 1.05, bez_dolu=False)
@@ -2208,7 +2244,9 @@ def spichlerz(faza):
     przod = (B.x0, B.y0 - 0.02, 0)
     if faza >= 3:
         gotowe = faza == 4
-        drzwi_dom(s, przod, "y", -1, 3.6, z0, 1.3, 2.2, DRZWI if gotowe else rgb(30, 26, 24))
+        drzwi_dom(s, przod, "y", -1, 3.6 if poziom == 1 else 3.3, z0, 1.3, 2.2, DRZWI if gotowe else rgb(30, 26, 24))
+        if poziom == 2:
+            drzwi_dom(s, przod, "y", -1, 6.9, z0, 1.3, 2.2, DRZWI * 0.92 if gotowe else rgb(30, 26, 24))
         for x, st in ((B.x0, -1), (B.x1, 1)):
             szczyt(s, x if st < 0 else x - 0.12, B.y0, B.y1, B.h, B.k, 0.12, DESKA_SZCZYT, mat=DREWNO)
     if faza >= 3:
@@ -2217,14 +2255,16 @@ def spichlerz(faza):
             polac(s, B, st, 0, 0.5 if faza == 3 else 1.0, okap=0.55)
     if faza == 4:
         # schodki z desek do drzwi
-        for k in range(3):
-            zz = z0 * (k + 1) / 4
-            pudlo(s, DREWNO, (-0.7, B.y0 - 0.35 - (2 - k) * 0.32, zz - 0.06), (0.7, B.y0 - 0.05 - (2 - k) * 0.32, zz), DESKA)
-        for x in (-0.75, 0.75):
-            belka(s, DREWNO, (x, B.y0 - 1.25, 0.0), (x, B.y0 - 0.05, z0), 0.08, RUSZT)
-        worek(s, 1.8, B.y0 - 0.6)
-        worek(s, 2.35, B.y0 - 0.75)
-        worek(s, 2.05, B.y0 - 0.65, z=0.42, lezy=True)  # po lewej (-X) lezy stos jedzenia z gry
+        for xd in ((0.0,) if poziom == 1 else (-1.8, 1.8)):
+            for k in range(3):
+                zz = z0 * (k + 1) / 4
+                pudlo(s, DREWNO, (xd - 0.7, B.y0 - 0.35 - (2 - k) * 0.32, zz - 0.06), (xd + 0.7, B.y0 - 0.05 - (2 - k) * 0.32, zz), DESKA)
+            for x in (xd - 0.75, xd + 0.75):
+                belka(s, DREWNO, (x, B.y0 - 1.25, 0.0), (x, B.y0 - 0.05, z0), 0.08, RUSZT)
+        dw = 0.0 if poziom == 1 else 2.0
+        worek(s, 1.8 + dw, B.y0 - 0.6)
+        worek(s, 2.35 + dw, B.y0 - 0.75)
+        worek(s, 2.05 + dw, B.y0 - 0.65, z=0.42, lezy=True)  # po lewej (-X) lezy stos jedzenia z gry
     if faza <= 2:
         stos_belek(s, -1.5, B.y0 - 3.0, 4.5, 5 if faza == 1 else 3)
         kozly(s, 2.2, B.y0 - 3.0)
@@ -4241,6 +4281,9 @@ BUDYNKI = {
     "SM_ChataDrwala3": (lambda f: chata_drwala(f, 3), 4),
     "SM_ChataBorowego2": (lambda f: chata_borowego(f, 2), 4),
     "SM_ChataBorowego3": (lambda f: chata_borowego(f, 3), 4),
+    "SM_PlacSkladowy2": (lambda f: plac_skladowy(f, 2), 4),
+    "SM_PlacSkladowy3": (lambda f: plac_skladowy(f, 3), 4),
+    "SM_Spichlerz2": (lambda f: spichlerz(f, 2), 4),
 }
 # Warianty domow (poziomy 1..3, warianty 1..3; wariant 0 to SM_Chata / SM_DomPruski / SM_DomDuzy wyzej).
 for _w in range(1, 4):
@@ -4264,7 +4307,10 @@ POJEDYNCZE = {"SM_Namiot": namiot, "SM_Ognisko": ognisko,  # bez faz budowy
               "SM_ChataDrwala3_U": lambda: przebudowa_prosta(lambda f: chata_drwala(f, 2), DRWAL, kamien=True),
               "SM_ChataBorowego2_U": lambda: przebudowa_prosta(chata_borowego, BOROWY),
               "SM_ChataBorowego3_U": lambda: przebudowa_prosta(lambda f: chata_borowego(f, 2), BOROWY, kamien=True),
-              "SM_ZagrodaWolow2_U": lambda: przebudowa_prosta(zagroda_wolow, WOLY)}
+              "SM_ZagrodaWolow2_U": lambda: przebudowa_prosta(zagroda_wolow, WOLY),
+              "SM_PlacSkladowy2_U": lambda: przebudowa_prosta(plac_skladowy, PLAC_B[1]),
+              "SM_PlacSkladowy3_U": lambda: przebudowa_prosta(lambda f: plac_skladowy(f, 2), PLAC_B[2], kamien=True),
+              "SM_Spichlerz2_U": lambda: przebudowa_prosta(spichlerz, SPICH, kamien=True)}
 for _w in range(4):
     _sufiks = f"_W{_w}" if _w else ""
     POJEDYNCZE[f"SM_DomPruski{_sufiks}_U"] = (lambda w: lambda: przebudowa(chata, pruski_B(w), w))(_w)

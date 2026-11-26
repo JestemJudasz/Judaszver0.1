@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Swiat/SwiatGameMode.h
+﻿// Plik: Source/grarts2d/Swiat/SwiatGameMode.h
 // Tryb gry: wczytuje dane swiata i stawia wszystko w pustej mapie (teren, slonce, niebo). Pawn = KameraMapy.
 // Ekran ladowania zaslania swiat, dopoki teren z drzewami nie jest gotowy; potem w rogu napis "Doczytywanie..."
 // zawsze, gdy cos sie jeszcze dociaga (zeby ogladac i oceniac tylko gotowy obraz).
@@ -48,6 +48,9 @@ private:
 
 	TWeakObjectPtr<ATerenKafle> Teren;
 	TSharedPtr<SWidget> Nakladka;
+	TSharedPtr<SWidget> Minimapa;
+	bool bMinimapa = true;
+	bool bBylWczytany = false;
 	TSharedPtr<SBorder> Tlo;
 	TSharedPtr<STextBlock> NapisDuzy;
 	TSharedPtr<STextBlock> NapisMaly;

@@ -72,7 +72,7 @@ public:
 
 	/** Ile kafli 512 m w kazda strone od kafla pod ogniskiem kamery (5 = 11x11 kafli, >= 2,5 km; przy max oddaleniu rog kadru ~1,6 km). */
 	UPROPERTY(EditAnywhere, Category = "Region")
-	int32 PromienRegionu = 5;
+	int32 PromienRegionu = 6; // P5: 13x13 kafli, przy max oddaleniu (2.2e5) rog kadru ~2,4 km
 
 	/** Kepki trawy i kamyki znikaja dalej niz tyle od kamery (cm) - z wysoka i tak sa mniejsze niz piksel. */
 	UPROPERTY(EditAnywhere, Category = "Region")

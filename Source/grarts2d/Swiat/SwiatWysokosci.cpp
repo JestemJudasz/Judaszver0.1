@@ -570,3 +570,18 @@ FSwiat::EPokrycie FSwiat::Pokrycie(double X, double Y)
 	const int32 R = FMath::Clamp(FMath::FloorToInt32((Polowa - X) / Bok * GWys + DV), 0, GWys - 1);
 	return EPokrycie(FMath::Min<uint8>(GPokrycie[R * GSzer + C], uint8(EPokrycie::Ile) - 1));
 }
+
+float FSwiat::WysokoscKafla(double X, double Y)
+{
+	// Siatka co 4 m od -Polowa, trojkaty z przekatna A-C (TerenKafle.cpp, Zbuduj). Na wypuklych zboczach plaskie trojkaty
+	// leza wyzej niz gladka Wysokosc, wiec bierzemy wieksza z obu.
+	constexpr double K = 400.0;
+	const double Gx = (X + Polowa) / K, Gy = (Y + Polowa) / K;
+	const double I = FMath::FloorToDouble(Gx), J = FMath::FloorToDouble(Gy);
+	const double Fx = Gx - I, Fy = Gy - J;
+	const double X0 = I * K - Polowa, Y0 = J * K - Polowa;
+	auto W = [](double Px, double Py) { return FMath::Max(0.0, double(Wysokosc(Px, Py))); };
+	const double HA = W(X0, Y0), HB = W(X0 + K, Y0), HC = W(X0 + K, Y0 + K), HE = W(X0, Y0 + K);
+	const double H = Fx >= Fy ? HA + Fx * (HB - HA) + Fy * (HC - HB) : HA + Fy * (HE - HA) + Fx * (HC - HE);
+	return float(FMath::Max(H, double(Wysokosc(X, Y))));
+}

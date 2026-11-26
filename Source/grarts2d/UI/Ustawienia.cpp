@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/UI/Ustawienia.cpp
+﻿// Plik: Source/grarts2d/UI/Ustawienia.cpp
 #include "UI/Ustawienia.h"
 #include "Engine/Engine.h"
 #include "Engine/UserInterfaceSettings.h"
@@ -53,6 +53,8 @@ const TArray<FUstawienia::FAkcja>& FUstawienia::Akcje()
 		{ "Drogi",       TEXT("Drogi"),                       TEXT("Osada"),  EKeys::G },
 		{ "Wojsko",      TEXT("Okno wojska"),                 TEXT("Osada"),  EKeys::J },
 		{ "Rody",        TEXT("Rody i handel"),               TEXT("Osada"),  EKeys::H },
+		{ "Rozwoj",      TEXT("Rozwój osady"),                TEXT("Osada"),  EKeys::O },
+		{ "Minimapa",    TEXT("Minimapa wł. / wył."),         TEXT("Kamera"), EKeys::M },
 		{ "ObrotBud",    TEXT("Obrót budynku w prawo"),       TEXT("Osada"),  EKeys::R },
 		{ "ObrotBudL",   TEXT("Obrót budynku w lewo"),        TEXT("Osada"),  EKeys::F },
 		{ "Tempo",       TEXT("Tempo budowy x10"),            TEXT("Osada"),  EKeys::T },

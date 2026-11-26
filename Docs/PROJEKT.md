@@ -1,4 +1,4 @@
-# grarts2d — dziennik projektu
+﻿# grarts2d — dziennik projektu
 
 ## Cel gry
 Strategia 3D, która wygląda jak 2D. Gracz zakłada osady, potem wioski, a na końcu zamki i warownie. Dochodzą do tego bitwy z dużymi armiami różnych rodzajów wojsk.
@@ -993,3 +993,19 @@ Kopia Source sprzed zmian: `Kopie/2026-11-26_przed_P1`. Lista 20 uwag i paczek P
 - Menu (`UI/MenuGlowne`, `PokazSloty`): w grze „Zapisz grę” (sloty 1–3, nadpisywanie), „Wczytaj grę” w grze i w menu startowym (też autozapis), opis slotu „pora, rok · rodziny · poziom — data”.
 - `friend struct FZapisGry` w `AOsada`, `ABudowa`, `ARody`, `ATerenKafle`, `ADrogi`, `AKameraMapy`; nowe `AOsada::UstawPrace` (rodzina do konkretnego budynku).
 - Test `grarts2d.Gra.Zapis` (`Testy/ZapisTesty.cpp`): osada z drwalem z rodziną, placem budowy 40%, polem 30 × 20 m z uprawą i drogą przechodzi zapis i wczytanie bez zmian. Kompilacja i wszystkie testy (15) zielone. W grze jeszcze nie oglądane.
+
+## Budowanie, P3 (26.11.2026, uwagi z gry: „większe składy po ulepszeniu, lepsze dopasowanie do terenu, ładniejsze drogi, pola i owczarnie rysowane punktami w dowolny kształt jak Manor Lords”)
+- Składy z poziomami: plac składowy → „Duży plac składowy” (13 × 10 m, 50 sztuk) → „Skład z szopą” (16 × 12 m, 80 sztuk, wymaga osady targowej); spichlerz → „Duży spichlerz” (70 sztuk, dwoje drzwi). Modele `plac_skladowy(faza, poziom)`, `spichlerz(faza, poziom)` w `Tools/budynki.py`, ulepszenie przyciskiem „Ulepsz” jak domy.
+- Dopasowanie do terenu: każdy budynek na zboczu dostaje nasyp fundamentu (`ABudowa::Podloze`, skarpa 4–9 m wg spadku), wysokość liczona tak jak trójkąty siatki terenu (`FSwiat::WysokoscKafla`, przeniesione z Budowa.cpp), więc rogi nie wiszą ani nie toną.
+- Drogi: „ładniejsze drogi” odczytane jako drogi chowające się pod terenem; wstęga drogi (`ADrogi`) idzie teraz po tej samej wysokości co siatka terenu. Jeśli chodziło o coś innego (kształt, szerokość, bruk), do dopytania.
+- Pola i owczarnie dowolnym kształtem: klik stawia róg, klik w pierwszy punkt (2,5 m) albo Enter zamyka kształt, prawy przycisk / Backspace cofa punkt, Esc anuluje, Shift czyści. Obrys rysowany linią na terenie (`ABudowniczy::RysujLinie`). `FRodzajBudynku::NaWielokat` sprawdza kształt (przecinające się boki, za mały / za duży), najdłuższy bok to przód z bramą, plot idzie po obrysie, zboże przycięte do kształtu, owce chodzą tylko po pastwisku, szopa owczarni szuka miejsca w środku. Zapis gry trzyma rogi („Wk”).
+- Test `grarts2d.Budowy.Wielokat`: pole w kształcie L (420 m², płot 100 m), klepsydra i mały trójkąt odrzucone, owczarnia z pięciokąta, zapis i wczytanie pola L. Wszystkie testy (16) zielone.
+
+## Bez ekranu wczytywania, oddalenie, minimapa, P5 (26.11.2026)
+- Ekran wczytywania tylko przy pierwszym starcie (pod menu) i do zrzutów kontrolnych (`-zrzut`, `-zaslona`). Przejście mapa papierowa ↔ mapa grywalna bez czarnej zasłony, postęp mały w prawym dolnym rogu (`ASwiatGameMode::Zaslon`).
+- Większe oddalenie na mapie grywalnej: `MaxOdlRegionu` 1,5e5 → 2,2e5 cm, teren liczony dalej (`PromienRegionu` 5 → 6, 13 × 13 kafli 512 m).
+- Minimapa (`UI/Minimapa.h/.cpp`, `SMinimapa`): prawy dolny róg, 210 px. Na mapie papierowej cała Europa ze złotym znakiem osady gracza i rodami w ich barwach (czerwona obwódka = wrogi), na mapie grywalnej ~6 km wokół kamery z budynkami. Obraz z pokrycia terenu, wody i cieniowania stoków (tekstura 112 × 112, przeliczana co 1/4 zakresu). Prostokąt = widok kamery (z obrotem). Klik albo przeciągnięcie przenosi kamerę. Klawisz M (do zmiany w ustawieniach) chowa i pokazuje.
+
+## Okno rozwoju osady, P7 (26.11.2026, uwaga z gry: „okno rozwoju osady, co zrobić, czego brakuje”)
+- Klik w panel osady (lewy górny róg) albo O otwiera pod nim okno „Rozwój osady” (`AOsada::RozwojOsady`, odświeżane co 0,5 s w `ABudowniczy::Tick`).
+- Sekcje: PILNE (pożar, głód, mało jedzenia, brak drwala i kłód, budowy bez materiału, rodziny w namiotach, zapas na zimę, niskie zadowolenie), CO DALEJ (rodziny bez pracy i puste budynki, brak domów, borowy, pilarnia, kamieniołom, pole i młyn, zbrojownia, pełny skład do ulepszenia) i POZIOM (warunki awansu ✓/✗ i co odblokuje, jak wcześniej w podpowiedzi).

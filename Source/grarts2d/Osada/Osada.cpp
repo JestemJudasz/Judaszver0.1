@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Osada/Osada.cpp
+﻿// Plik: Source/grarts2d/Osada/Osada.cpp
 #include "Osada/Osada.h"
 #include "Osada/Rody.h"
 #include "Osada/Drogi.h"
@@ -233,7 +233,23 @@ ABudowa* AOsada::Postaw(const FRodzajBudynku& R, FVector2D Gdzie, float Obrot, f
 	}
 	if (B && Teren.IsValid())
 	{
-		if (R.ZObszarem())
+		if (R.ZWielokatem())
+		{
+			// Wielokat (26.11.2026): kola co 5 m w srodku i tuz za plotem.
+			const double Rad = FMath::DegreesToRadians(double(Obrot));
+			const FVector2D U(FMath::Cos(Rad), FMath::Sin(Rad)), V(-U.Y, U.X);
+			for (double X = R.PlotMin.X; X <= R.PlotMax.X + 250.0; X += 500.0)
+			{
+				for (double Y = R.PlotMin.Y; Y <= R.PlotMax.Y + 250.0; Y += 500.0)
+				{
+					if (R.OdBrzegu(FVector2D(X, Y)) > -200.f)
+					{
+						Teren->Wykarczuj(Gdzie + U * X + V * Y, 420.f);
+					}
+				}
+			}
+		}
+		else if (R.ZObszarem())
 		{
 			// Pole i pastwisko: karczowanie kolami wzdluz dluzszego boku prostokata (jedno kolo wycieloby las daleko poza plotem).
 			const FProstokat P = ProstokatBudynku(R, Gdzie, Obrot, 50.f);
@@ -1717,6 +1733,77 @@ FString AOsada::OpisPoziomu() const
 	{
 		T += TEXT("\n\nOdblokuje: ") + FString::Join(Odbl, TEXT(", "));
 	}
+	return T;
+}
+
+FString AOsada::RozwojOsady() const
+{
+	// P7 (26.11.2026): okno rozwoju - co blokuje osade teraz, co dalej i co trzeba do awansu (jak doradca w city builderach).
+	TArray<FString> Pilne, Rady;
+	const FSurowce Z = Zapasy();
+	const int32 N = Rodziny.Num();
+	auto Ile = [this](EFunkcja F)
+	{
+		int32 K = 0;
+		for (const TWeakObjectPtr<ABudowa>& B : Budynki)
+		{
+			if (B.IsValid() && B->Gotowy() && B->Rodzaj().Funkcja == F) { ++K; }
+		}
+		return K;
+	};
+	auto Wyrabia = [this](ESurowiec S)
+	{
+		for (const TWeakObjectPtr<ABudowa>& B : Budynki)
+		{
+			if (B.IsValid() && B->Gotowy() && (B->Rodzaj().Wyrob == S || B->Rodzaj().Wyrob2 == S)) { return true; }
+		}
+		return false;
+	};
+	int32 Stoi = 0, Pustych = 0;
+	for (const TWeakObjectPtr<ABudowa>& B : Budynki)
+	{
+		if (!B.IsValid()) { continue; }
+		if (!B->Gotowy() && Zablokowana(B.Get())) { ++Stoi; }
+		const FRodzajBudynku& R = B->Rodzaj();
+		if (B->Gotowy() && R.Funkcja != EFunkcja::Mieszkalny && R.Funkcja != EFunkcja::Magazyn && R.Funkcja != EFunkcja::Brak
+			&& R.Miejsc > 0 && RodzinWPracy(B.Get()) == 0) { ++Pustych; }
+	}
+	// --- Pilne ---
+	if (Plonacych() > 0) { Pilne.Add(FString::Printf(TEXT("Pali się %d bud. - ludzie gaszą sami, nie stawiaj obok nowych."), Plonacych())); }
+	if (Glodnych() > 0) { Pilne.Add(FString::Printf(TEXT("%d rodzin głodnych - postaw chatę zbieracza lub myśliwego, później pole, młyn i piekarnię."), Glodnych())); }
+	else if (Z[ESurowiec::Jedzenie] + Z[ESurowiec::Ryby] < N * 2) { Pilne.Add(TEXT("Mało jedzenia na zapas (mniej niż 2 posiłki na rodzinę) - dodaj rodzinę do zbieracza, myśliwego albo rybaka.")); }
+	if (Ile(EFunkcja::Drwal) == 0) { Pilne.Add(TEXT("Brak chaty drwala - bez kłód nic się nie zbuduje (pierwsza jest za darmo).")); }
+	else if (Z[ESurowiec::Kloda] < 4 && !Wyrabia(ESurowiec::Kloda)) { Pilne.Add(TEXT("Kończą się kłody - przydziel rodzinę do chaty drwala.")); }
+	if (Stoi > 0) { Pilne.Add(FString::Printf(TEXT("%d budów stoi bez materiału - brakuje kłód, desek albo kamienia w magazynach."), Stoi)); }
+	if (WNamiotach() > 0 && WolnychMiejsc() == 0) { Pilne.Add(FString::Printf(TEXT("%d rodzin śpi w namiotach - postaw dom (chata, 4 kłody)."), WNamiotach())); }
+	if (Pora() == EPora::Jesien && Z[ESurowiec::Kloda] + Z[ESurowiec::Opal] < N) { Pilne.Add(TEXT("Idzie zima: każda rodzina spala kłodę lub opał przy posiłku - zrób zapas.")); }
+	if (Zadowolenie() < 40) { Pilne.Add(FString::Printf(TEXT("Zadowolenie %d%% - rodziny mogą odejść. Zobacz podpowiedź licznika zadowolenia."), Zadowolenie())); }
+	// --- Co dalej ---
+	if (WolnychRodzin() > 0 && Pustych > 0) { Rady.Add(FString::Printf(TEXT("%d rodzin bez pracy, a %d budynków stoi pustych - otwórz budynek i kliknij \"Dodaj rodzinę\"."), WolnychRodzin(), Pustych)); }
+	else if (WolnychRodzin() > 2) { Rady.Add(FString::Printf(TEXT("%d rodzin bez pracy (budują i noszą) - postaw nowy budynek pracy."), WolnychRodzin())); }
+	if (WolnychMiejsc() == 0 && N >= 3) { Rady.Add(TEXT("Brak wolnych miejsc w domach - nowe rodziny przyjdą dopiero, gdy postawisz dom.")); }
+	if (Ile(EFunkcja::Borowy) == 0 && Ile(EFunkcja::Drwal) > 0 && N >= 4) { Rady.Add(TEXT("Chata borowego sadzi las, żeby drwal miał co ścinać.")); }
+	if (Ile(EFunkcja::Pilarnia) == 0 && !Wyrabia(ESurowiec::Deska) && N >= 4) { Rady.Add(TEXT("Pilarnia robi deski z kłód - potrzebne do lepszych budynków.")); }
+	if (Ile(EFunkcja::Kamieniolom) == 0 && N >= 6) { Rady.Add(TEXT("Kamieniołom (przy skałach) daje kamień na kościół, mury i ulepszenia.")); }
+	if (Ile(EFunkcja::Pole) == 0 && N >= 6) { Rady.Add(TEXT("Pole zboża (rysuj punktami) + spichlerz, młyn i piekarnia dają stałe jedzenie.")); }
+	if (Ile(EFunkcja::Zbrojownia) == 0 && N >= 10) { Rady.Add(TEXT("Zbrojownia i włócznie przygotują ruszenie na napady (okno Wojsko, J).")); }
+	for (const TWeakObjectPtr<ABudowa>& B : Budynki)
+	{
+		if (Rady.Num() >= 7) { break; }
+		if (B.IsValid() && B->Gotowy() && B->Rodzaj().Funkcja == EFunkcja::Magazyn && B->Rodzaj().Ulepszenie
+			&& [&B]() { for (int32 i = 0; i < int32(ESurowiec::Ile); ++i) { if (B->Zapas.Ile[i] * 4 >= B->Rodzaj().Pojemnosc * 3) { return true; } } return false; }())
+		{
+			Rady.Add(FString::Printf(TEXT("%s jest prawie pełny - ulepsz go w oknie budynku (większy skład)."), *B->Rodzaj().Nazwa));
+			break;
+		}
+	}
+	FString T = FString::Printf(TEXT("ROZWÓJ OSADY  ·  %s  ·  %d rodzin  ·  zadowolenie %d%%\n"), *NapisPoziomu(), N, Zadowolenie());
+	T += TEXT("\nPILNE\n");
+	T += Pilne.Num() ? TEXT("✗ ") + FString::Join(Pilne, TEXT("\n✗ ")) : FString(TEXT("✓ Nic pilnego - osada działa."));
+	T += TEXT("\n\nCO DALEJ\n");
+	T += Rady.Num() ? TEXT("• ") + FString::Join(Rady, TEXT("\n• ")) : FString(TEXT("• Rozbudowuj osadę i zbieraj zapasy."));
+	T += TEXT("\n\n");
+	T += OpisPoziomu().Replace(TEXT("Poziom osady:"), TEXT("POZIOM:"));
 	return T;
 }
 

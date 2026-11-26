@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Budowy/Budowniczy.h
+﻿// Plik: Source/grarts2d/Budowy/Budowniczy.h
 // Sterowanie budowaniem na mapie grywalnej i interfejs osady:
 //   Start gry: po wejsciu na mape grywalna gracz wybiera miejsce obozu (podglad 5 namiotow i ogniska, lewy klik).
 //   Potem dolny pasek budowy (SPasekBudowy): zakladki Mieszkalne / Religia, klik w budynek = polprzezroczysty podglad
@@ -163,6 +163,16 @@ private:
 	/** Pole i pastwisko: 0 = czeka na pierwszy rog, 1 = na drugi, 2 = zaznaczone (panel: Zbuduj / Anuluj). */
 	int32 KrokObszaru = 0;
 	FVector2D RogA = FVector2D::ZeroVector;
+	/** Pole i owczarnia dowolnym ksztaltem (26.11.2026): klikniete rogi plotu (swiat), powod, czemu nie mozna, obrys na terenie. */
+	TArray<FVector2D> PunktyObszaru;
+	FString BladObszaru;
+	FVector2D OstatniKursor = FVector2D(1e9);
+	float SzkicObrot = 0.f;
+	UPROPERTY(Transient)
+	TObjectPtr<class UProceduralMeshComponent> LiniaObszaru;
+	UPROPERTY(Transient)
+	TObjectPtr<class UMaterialInstanceDynamic> MaterialLinii;
+	void RysujLinie(const TArray<FVector2D>& P, bool bZamknieta, bool bDobra);
 	/** Rodzaj na zaznaczony prostokat (FRodzajBudynku::NaObszar) i gdzie stanie. */
 	TSharedPtr<FRodzajBudynku> Szkic;
 	FVector2D SzkicGdzie = FVector2D::ZeroVector;
@@ -192,6 +202,10 @@ private:
 	FSlateBrush IkonaGroszyB;
 	FButtonStyle StylPrzyciskuRodow;
 	FSlateBrush TloInfo;
+	/** P7: okno rozwoju osady pod panelem osady (klik w panel albo O); tekst odswiezany co pol sekundy. */
+	bool bRozwoj = false;
+	FString TekstRozwoju;
+	float DoRozwoju = 0.f;
 	FSlateBrush IkonySurowcowB[int32(ESurowiec::Ile)];
 	FSlateBrush IkonaRodzinyB;
 	FSlateBrush IkonaZadowoleniaB;

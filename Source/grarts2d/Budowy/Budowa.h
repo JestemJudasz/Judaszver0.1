@@ -136,6 +136,25 @@ struct FRodzajBudynku
 	FVector2D BudynekMin = FVector2D::ZeroVector;   // owczarnia: obrys szopy (teren pod nia jak pod zwyklym budynkiem)
 	FVector2D BudynekMax = FVector2D::ZeroVector;
 	float CzynnikObszaru = 1.f;                     // powierzchnia / powierzchnia bazowa (pole: praca orki i siewu)
+	// Pola i owczarnie dowolnym ksztaltem (26.11.2026, uwaga z gry: "rysowane punktami w dowolny ksztalt jak Manor Lords"):
+	// wielokat w ukladzie budynku (cm), przod = bok PrzodWielokata (od punktu i do i+1, rownolegly do X, na +Y, z brama).
+	// Obszar / PlotMin / PlotMax to wtedy prostokat opisany (kolizje, teren). Pusty = prostokat jak dotad.
+	TArray<FVector2D> Wielokat;
+	int32 PrzodWielokata = -1;
+	float PoleWielokata = 0.f;   // cm2
+	float ObwodWielokata = 0.f;  // cm
+	bool ZWielokatem() const { return Wielokat.Num() >= 3; }
+	/** Punkt (uklad budynku) w srodku wielokata (bez wielokata: zawsze). */
+	bool WWielokacie(FVector2D L) const;
+	/** Odleglosc od brzegu wielokata albo prostokata plotu (cm), dodatnia w srodku. */
+	float OdBrzegu(FVector2D L) const;
+	/** Owczarnia: czy owca moze tu stac (w plocie, nie w szopie). */
+	bool NaPastwisku(FVector2D L) const;
+	/** Owczarnia: losowy punkt pastwiska (uklad budynku). */
+	FVector2D PunktPastwiska() const;
+	/** Rodzaj Baza (pole, owczarnia) na wielokat z punktow swiata: uklad budynku z najdluzszego boku (przod z brama),
+	 *  owczarnia szukuje miejsca na szope w srodku. Zwraca pusty napis albo powod, czemu nie mozna. */
+	static FString NaWielokat(const FRodzajBudynku& Baza, const TArray<FVector2D>& Punkty, FRodzajBudynku& Out, FVector2D& Gdzie, float& ObrotSt);
 
 	// Poziomy (22.11.2026, prosba uzytkownika): dom 1..3 (chata z bali -> dom muru pruskiego -> duzy dom),
 	// kosciol 1..3 (drewniany -> kamienny -> wielki z placem). Ulepszenie w oknie budynku (AOsada::Ulepsz):
@@ -161,7 +180,7 @@ struct FRodzajBudynku
 	float Narasta = 0.f;
 
 	bool ZObszarem() const { return Obszar.X > 0.f; }
-	float Metry2() const { return float(Obszar.X * Obszar.Y) / 1e4f; }
+	float Metry2() const { return ZWielokatem() ? PoleWielokata / 1e4f : float(Obszar.X * Obszar.Y) / 1e4f; }
 	/** "24 x 18 m, 0,04 ha (432 m²)" (okno budynku, panel zaznaczania). */
 	FString OpisObszaru() const;
 	/** Obrys w ukladzie budynku: zaznaczony prostokat z plotem albo +-Polowa. */
@@ -180,6 +199,9 @@ struct FRodzajBudynku
 	static const FRodzajBudynku& Namiot();
 	static const FRodzajBudynku& Ognisko();
 	static const FRodzajBudynku& PlacSkladowy();
+	static const FRodzajBudynku& PlacSkladowy2();   // P3 (26.11.2026): wiekszy sklad po ulepszeniu
+	static const FRodzajBudynku& PlacSkladowy3();
+	static const FRodzajBudynku& Spichlerz2();
 	static const FRodzajBudynku& ChataDrwala();
 	static const FRodzajBudynku& ChataBorowego();
 	static const FRodzajBudynku& Pilarnia();

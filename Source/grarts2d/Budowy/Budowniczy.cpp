@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Budowy/Budowniczy.cpp
+﻿// Plik: Source/grarts2d/Budowy/Budowniczy.cpp
 #include "Budowy/Budowniczy.h"
 #include "Dev/Galeria.h"
 #include "Budowy/Budowa.h"
@@ -38,6 +38,8 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Gra/ZapisGry.h"
+#include "ProceduralMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 // Plynne pojawienie sie okna (22.11.2026): 0,15 s od przezroczystego, zamiast nagle.
 static void PokazPlynnie(const TSharedPtr<SBox>& Miejsce, TSharedRef<SWidget> Zawartosc)
@@ -250,12 +252,31 @@ void ABudowniczy::ZrobInterfejs()
 				SNew(SBorder)
 				.BorderImage(&TloInfo)
 				.Padding(FMargin(12.f, 6.f))
-				.Visibility(EVisibility::HitTestInvisible)
+				.OnMouseButtonDown_Lambda([this](const FGeometry&, const FPointerEvent&) { bRozwoj = !bRozwoj; DoRozwoju = 0.f; return FReply::Handled(); })
+				.ToolTipText(FText::FromString(TEXT("Kliknij (albo O): okno rozwoju osady - co pilne, co dalej, warunki awansu.")))
 				[
 					SAssignNew(Info, STextBlock)
 					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
 					.ColorAndOpacity(FLinearColor(0.95f, 0.90f, 0.78f))
-					.ToolTipText_Lambda([this]() { return FText::FromString(Osada ? Osada->OpisPoziomu() : FString()); })
+				]
+			]
+			// P7: okno rozwoju osady.
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 6.f, 0.f, 0.f)
+			[
+				SNew(SBorder)
+				.BorderImage(&TloInfo)
+				.Padding(FMargin(14.f, 10.f))
+				.Visibility_Lambda([this]() { return bRozwoj ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+				[
+					SNew(SBox)
+					.MaxDesiredWidth(560.f)
+					[
+						SNew(STextBlock)
+						.AutoWrapText(true)
+						.Text_Lambda([this]() { return FText::FromString(TekstRozwoju); })
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 11))
+						.ColorAndOpacity(FLinearColor(0.95f, 0.90f, 0.78f))
+					]
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 6.f, 0.f, 0.f)
@@ -616,11 +637,14 @@ void ABudowniczy::UstawPomoc()
 	}
 	else if (Wybrany && Wybrany->ZObszarem())
 	{
-		const FVector2D Mn = Wybrany->ObszarMin / 100.f, Mx = Wybrany->ObszarMax / 100.f;
-		T = KrokObszaru == 0 ? FString::Printf(TEXT("%s: kliknij pierwszy róg, R - obróć, prawy klik / Esc - anuluj"), *Wybrany->Nazwa)
-			: KrokObszaru == 1 ? FString::Printf(TEXT("%s: kliknij drugi róg (od %.0f x %.0f do %.0f x %.0f m), R - obróć, prawy klik - od nowa"),
-				*Wybrany->Nazwa, Mn.X, Mn.Y, Mx.X, Mx.Y)
-			: FString::Printf(TEXT("%s: Enter albo Zbuduj - postaw, prawy klik - popraw, Esc - anuluj"), *Wybrany->Nazwa);
+		const int32 Od = FMath::RoundToInt32(Wybrany->ObszarMin.X * Wybrany->ObszarMin.Y / 1e4f), Do = FMath::RoundToInt32(Wybrany->ObszarMax.X * Wybrany->ObszarMax.Y / 1e4f);
+		T = KrokObszaru == 2 ? FString::Printf(TEXT("%s: Enter albo Zbuduj - postaw, prawy klik - popraw, Esc - anuluj"), *Wybrany->Nazwa)
+			: FString::Printf(TEXT("%s: klikaj kolejne rogi płotu (dowolny kształt, %d–%d m²), zamknij klikiem w pierwszy punkt albo Enter\nPrawy klik / Backspace - cofnij punkt, Esc - anuluj. Brama staje na najdłuższym boku%s"),
+				*Wybrany->Nazwa, Od, Do, Wybrany->Funkcja == EFunkcja::Owczarnia ? TEXT(", szopa sama w środku") : TEXT(""));
+		if (!BladObszaru.IsEmpty() && KrokObszaru != 2)
+		{
+			T += TEXT("\n") + BladObszaru;
+		}
 	}
 	else if (Drogi && Drogi->Rysuje())
 	{
@@ -814,6 +838,13 @@ void ABudowniczy::Wybierz(const FRodzajBudynku* R)
 	Wybrany = R;
 	UsunPodgladLinii();
 	KrokObszaru = 0;
+	PunktyObszaru.Reset();
+	BladObszaru.Empty();
+	OstatniKursor = FVector2D(1e9);
+	if (LiniaObszaru)
+	{
+		LiniaObszaru->ClearAllMeshSections();
+	}
 	Szkic.Reset();
 	SzkicPoz = FVector(1e9);
 	if (Podglad.IsValid())
@@ -1635,88 +1666,173 @@ void ABudowniczy::StawianieLinii(APlayerController* PC)
 
 void ABudowniczy::StawianieObszaru(APlayerController* PC)
 {
-	// Pole i pastwisko: pierwszy klik - rog, drugi - przeciwny rog (boki w calych metrach, przyciete do ObszarMin..Max),
-	// potem panel nad paskiem: Zbuduj (Enter) / Anuluj (Esc). Prawy klik - krok wstecz. Podglad pokazuje plot i kafle pola.
-	const bool bPrawy = PC->WasInputKeyJustPressed(EKeys::RightMouseButton);
-	if (PC->WasInputKeyJustPressed(EKeys::Escape) || (bPrawy && KrokObszaru == 0))
+	// Pole i pastwisko dowolnym ksztaltem (26.11.2026, uwaga z gry: "rysowane punktami jak w Manor Lords"): lewy klik - kolejny
+	// rog plotu, zamkniecie klikiem w pierwszy punkt albo Enter, prawy klik / Backspace - cofnij punkt (bez punktow: anuluj),
+	// Esc - anuluj. Przod z brama to najdluzszy bok, szopa owczarni staje sama w srodku. Potem panel: Zbuduj (Enter) / Anuluj.
+	const bool bPrawy = PC->WasInputKeyJustPressed(EKeys::RightMouseButton) || PC->WasInputKeyJustPressed(EKeys::BackSpace);
+	const bool bKlik = Klik(PC);
+	if (PC->WasInputKeyJustPressed(EKeys::Escape) || (bPrawy && PunktyObszaru.Num() == 0 && KrokObszaru == 0))
 	{
 		Wybierz(nullptr);
 		return;
 	}
 	if (bPrawy)
 	{
-		--KrokObszaru;
+		if (KrokObszaru == 2)
+		{
+			KrokObszaru = 0;
+		}
+		else
+		{
+			PunktyObszaru.Pop();
+		}
+		OstatniKursor = FVector2D(1e9);
 		UstawPomoc();
 		return;
 	}
 	if (KrokObszaru == 2)
 	{
+		RysujLinie(PunktyObszaru, true, bMozna);
 		if (PC->WasInputKeyJustPressed(EKeys::Enter))
 		{
 			ZbudujSzkic();
 		}
 		return;
 	}
-	ObrocKlawiszem(PC);
 	FVector P;
-	if (!TerenPodKursorem(PC, P))
+	const bool bJest = TerenPodKursorem(PC, P);
+	const FVector2D Kursor = bJest ? FVector2D(P) : FVector2D::ZeroVector;
+	const bool bDoPierwszego = bJest && PunktyObszaru.Num() >= 3 && FVector2D::Distance(Kursor, PunktyObszaru[0]) < 250.0;
+	const bool bZamknij = PunktyObszaru.Num() >= 3 && (PC->WasInputKeyJustPressed(EKeys::Enter) || (bKlik && bDoPierwszego));
+	TArray<FVector2D> Pkt = PunktyObszaru;
+	if (bJest && !bDoPierwszego && !bZamknij)
 	{
+		Pkt.Add(Kursor);
+	}
+	if (Pkt.Num() >= 3)
+	{
+		if (bZamknij || !Kursor.Equals(OstatniKursor, 50.0))
+		{
+			OstatniKursor = Kursor;
+			FRodzajBudynku Nowy;
+			FVector2D G;
+			float O = 0.f;
+			BladObszaru = FRodzajBudynku::NaWielokat(*Wybrany, Pkt, Nowy, G, O);
+			if (BladObszaru.IsEmpty())
+			{
+				Szkic = MakeShared<FRodzajBudynku>(Nowy);
+				SzkicGdzie = G;
+				SzkicObrot = O;
+				float Z = 0.f;
+				bMozna = MoznaPostawic(*Szkic, G, O, Z);
+				PunktZ = Z;
+				if (!bMozna)
+				{
+					BladObszaru = TEXT("Tu nie można: woda, za stromo albo zajęte przez budynek lub drogę");
+				}
+				if (Podglad.IsValid())
+				{
+					Podglad->Ustaw(*Szkic, true);
+					Podglad->SetActorHiddenInGame(false);
+					Podglad->SetActorLocationAndRotation(FVector(G, Z), FRotator(0.f, O, 0.f));
+					Podglad->OdswiezObszar(true);
+					Podglad->UstawKolorPodgladu(bMozna);
+				}
+			}
+			else
+			{
+				bMozna = false;
+				if (Podglad.IsValid())
+				{
+					Podglad->SetActorHiddenInGame(true);
+				}
+			}
+			UstawPomoc();
+		}
+	}
+	else
+	{
+		bMozna = false;
+		BladObszaru.Empty();
+		Szkic.Reset();
 		if (Podglad.IsValid())
 		{
 			Podglad->SetActorHiddenInGame(true);
 		}
-		bMozna = false;
+	}
+	RysujLinie(Pkt, Pkt.Num() >= 3, Pkt.Num() < 3 || bMozna);
+	if (bZamknij)
+	{
+		if (bMozna && Szkic.IsValid())
+		{
+			KrokObszaru = 2;
+		}
+		UstawPomoc();
 		return;
 	}
-	const FVector2D Kursor(P);
-	const double Rad = FMath::DegreesToRadians(double(Obrot));
-	const FVector2D U(FMath::Cos(Rad), FMath::Sin(Rad)), V(-U.Y, U.X);
-	// Przed pierwszym klikiem: bazowa wielkosc z rogiem pod kursorem.
-	const FVector2D Rog = KrokObszaru == 0 ? Kursor : RogA;
-	const FVector2D D = KrokObszaru == 0 ? Wybrany->Obszar : FVector2D((Kursor - RogA) | U, (Kursor - RogA) | V);
-	auto DoMetra = [](double Dl, double Mn, double Mx)
+	if (bJest && bKlik && !bDoPierwszego)
 	{
-		const double B = FMath::Clamp(FMath::RoundToDouble(FMath::Abs(Dl) / 100.0) * 100.0, Mn, Mx);
-		return Dl < 0.0 ? -B : B;
-	};
-	const double DX = DoMetra(D.X, Wybrany->ObszarMin.X, Wybrany->ObszarMax.X);
-	const double DY = DoMetra(D.Y, Wybrany->ObszarMin.Y, Wybrany->ObszarMax.Y);
-	const FVector2D Srodek = Rog + U * (DX / 2.0) + V * (DY / 2.0);
-	const FVector2D Wymiar(FMath::Abs(DX), FMath::Abs(DY));
-	if (!Szkic.IsValid() || !Szkic->Obszar.Equals(Wymiar, 1.0))
-	{
-		Szkic = MakeShared<FRodzajBudynku>(FRodzajBudynku::NaObszar(*Wybrany, float(Wymiar.X), float(Wymiar.Y)));
-		if (Podglad.IsValid())
-		{
-			Podglad->Ustaw(*Szkic, true);
-		}
-		SzkicPoz = FVector(1e9);
-	}
-	SzkicGdzie = Srodek - U * Szkic->SrodekObszaru.X - V * Szkic->SrodekObszaru.Y;
-	float Z = 0.f;
-	bMozna = MoznaPostawic(*Szkic, SzkicGdzie, Obrot, Z);
-	PunktZ = Z;
-	if (Podglad.IsValid())
-	{
-		Podglad->SetActorHiddenInGame(false);
-		Podglad->SetActorLocationAndRotation(FVector(SzkicGdzie, Z), FRotator(0.f, Obrot, 0.f));
-		const FVector Poz(SzkicGdzie, Obrot);
-		if (!Poz.Equals(SzkicPoz, 1.0))
-		{
-			SzkicPoz = Poz;
-			Podglad->OdswiezObszar(true);
-		}
-		Podglad->UstawKolorPodgladu(bMozna);
-	}
-	if (Klik(PC))
-	{
-		if (KrokObszaru == 0)
-		{
-			RogA = Kursor;
-		}
-		++KrokObszaru;
+		PunktyObszaru.Add(Kursor);
 		UstawPomoc();
 	}
+}
+
+void ABudowniczy::RysujLinie(const TArray<FVector2D>& P, bool bZamknieta, bool bDobra)
+{
+	// Obrys rysowanego plotu: pas 40 cm nad terenem i kwadraty w rogach (zielony = mozna, czerwony = nie).
+	if (!LiniaObszaru)
+	{
+		LiniaObszaru = NewObject<UProceduralMeshComponent>(this);
+		LiniaObszaru->SetupAttachment(RootComponent);
+		LiniaObszaru->SetUsingAbsoluteLocation(true);
+		LiniaObszaru->SetUsingAbsoluteRotation(true);
+		LiniaObszaru->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		LiniaObszaru->SetCastShadow(false);
+		LiniaObszaru->RegisterComponent();
+		LiniaObszaru->SetWorldLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Swiat/Budynki/M_Bud_Podglad.M_Bud_Podglad")))
+		{
+			MaterialLinii = UMaterialInstanceDynamic::Create(M, this);
+			LiniaObszaru->SetMaterial(0, MaterialLinii);
+		}
+	}
+	LiniaObszaru->ClearAllMeshSections();
+	if (P.Num() == 0)
+	{
+		return;
+	}
+	if (MaterialLinii)
+	{
+		MaterialLinii->SetVectorParameterValue(TEXT("Kolor"), bDobra ? FLinearColor(0.2f, 0.9f, 0.3f) : FLinearColor(1.f, 0.15f, 0.1f));
+	}
+	TArray<FVector> V;
+	TArray<int32> T;
+	auto Quad = [&](FVector2D A, FVector2D B, float Szer)
+	{
+		const FVector2D D = (B - A).GetSafeNormal();
+		const FVector2D N(-D.Y * Szer * 0.5, D.X * Szer * 0.5);
+		const int32 I = V.Num();
+		for (const FVector2D& Q : { A - N, A + N, B + N, B - N })
+		{
+			V.Add(FVector(Q, FSwiat::WysokoscKafla(Q.X, Q.Y) + 40.0));
+		}
+		T.Append({ I, I + 1, I + 2, I, I + 2, I + 3, I, I + 2, I + 1, I, I + 3, I + 2 }); // z obu stron
+	};
+	const int32 N = P.Num();
+	for (int32 i = 0; i < (bZamknieta ? N : N - 1); ++i)
+	{
+		const FVector2D A = P[i], B = P[(i + 1) % N];
+		const int32 Kawalki = FMath::Max(1, FMath::CeilToInt32(FVector2D::Distance(A, B) / 200.0));
+		for (int32 k = 0; k < Kawalki; ++k)
+		{
+			Quad(FMath::Lerp(A, B, double(k) / Kawalki), FMath::Lerp(A, B, double(k + 1) / Kawalki), 40.f);
+		}
+	}
+	for (int32 i = 0; i < N; ++i)
+	{
+		Quad(P[i] - FVector2D(60.0, 0.0), P[i] + FVector2D(60.0, 0.0), i == 0 ? 160.f : 120.f);
+	}
+	LiniaObszaru->CreateMeshSection(0, V, T, TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>(), false);
 }
 
 void ABudowniczy::ZbudujSzkic()
@@ -1726,11 +1842,14 @@ void ABudowniczy::ZbudujSzkic()
 		return;
 	}
 	// Budowe podejmuja wolni osadnicy (AOsada::Tick). Shift: zaznaczaj dalej.
-	Osada->Postaw(*Szkic, SzkicGdzie, Obrot, PunktZ);
+	Osada->Postaw(*Szkic, SzkicGdzie, SzkicObrot, PunktZ);
 	APlayerController* PC = GetWorld()->GetFirstPlayerController();
 	if (PC && PC->IsInputKeyDown(EKeys::LeftShift))
 	{
 		KrokObszaru = 0;
+		PunktyObszaru.Reset();
+		Szkic.Reset();
+		RysujLinie({}, false, true);
 		UstawPomoc();
 	}
 	else
@@ -1768,7 +1887,7 @@ FString ABudowniczy::OpisSzkicu() const
 			Koszt += IleSurowca(S, R.Koszt[S]);
 		}
 	}
-	T += FString::Printf(TEXT("\nKoszt: %s   ·   płot: %d m"), *Koszt, FMath::RoundToInt32(2.f * float(R.Obszar.X + R.Obszar.Y) / 100.f));
+	T += FString::Printf(TEXT("\nKoszt: %s   ·   płot: %d m"), *Koszt, FMath::RoundToInt32(R.ZWielokatem() ? R.ObwodWielokata / 100.f : 2.f * float(R.Obszar.X + R.Obszar.Y) / 100.f));
 	return T;
 }
 
@@ -1779,7 +1898,7 @@ TSharedRef<SWidget> ABudowniczy::PanelObszaru()
 		.Padding(FMargin(16.f, 8.f))
 		.Visibility_Lambda([this]()
 		{
-			return (Wybrany && Wybrany->ZObszarem() && Szkic.IsValid() && KrokObszaru >= 1) ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
+			return (Wybrany && Wybrany->ZObszarem() && Szkic.IsValid() && (KrokObszaru == 2 || PunktyObszaru.Num() >= 2)) ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
 		})
 		[
 			SNew(SVerticalBox)
@@ -1793,8 +1912,8 @@ TSharedRef<SWidget> ABudowniczy::PanelObszaru()
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)
 			[
 				SNew(STextBlock)
-				.Visibility_Lambda([this]() { return bMozna ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
-				.Text(FText::FromString(TEXT("Tu nie można: woda, za stromo albo zajęte przez inny budynek")))
+				.Visibility_Lambda([this]() { return bMozna && BladObszaru.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+				.Text_Lambda([this]() { return FText::FromString(BladObszaru.IsEmpty() ? FString(TEXT("Tu nie można: woda, za stromo albo zajęte przez inny budynek")) : BladObszaru); })
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
 				.ColorAndOpacity(FLinearColor(1.f, 0.42f, 0.32f))
 			]
@@ -1878,6 +1997,7 @@ void ABudowniczy::PokazObszarow(FVector2D Srodek)
 		Szkic = MakeShared<FRodzajBudynku>(Nowe);
 		KrokObszaru = 2;
 		SzkicGdzie = GN;
+		SzkicObrot = Ob;
 		PunktZ = ZN;
 		bMozna = true;
 		if (Podglad.IsValid())
@@ -2045,6 +2165,16 @@ void ABudowniczy::Tick(float DeltaSeconds)
 	if (Bitwa && bTrybBitwy)
 	{
 		return;
+	}
+	if (PC->WasInputKeyJustPressed(FUstawienia::Klawisz("Rozwoj")) && Osada->MaOboz())
+	{
+		bRozwoj = !bRozwoj;
+		DoRozwoju = 0.f;
+	}
+	if (bRozwoj && (DoRozwoju -= DeltaSeconds) <= 0.f)
+	{
+		DoRozwoju = 0.5f;
+		TekstRozwoju = Osada->RozwojOsady();
 	}
 	if (PC->WasInputKeyJustPressed(FUstawienia::Klawisz("Wojsko")) && Osada->MaOboz())
 	{

@@ -27,6 +27,9 @@ struct GRARTS2D_API FSwiat
 
 	/** Wysokosc nad poziomem morza (cm). Ponizej 0 = dno morza/jeziora. OdRzekiCm: przy okazji OdRzeki (jedno szukanie zamiast dwoch). */
 	static float Wysokosc(double X, double Y, float* OdRzekiCm = nullptr);
+	/** Wysokosc tak, jak ja rysuje kafel mapy grywalnej (siatka 4 m, trojkaty jak w TerenKafle), wieksza z niej i z gladkiej.
+	 *  Do rzeczy kladzionych na terenie (lan pola, droga, nasyp pod budynkiem), zeby nie chowaly sie pod trojkatami (26.11.2026). */
+	static float WysokoscKafla(double X, double Y);
 
 	/**
 	 * Mapa grywalna: rzezba wyrazniejsza na calej mapie (rzeczywiste roznice wysokosci x PrzesadaRegionu wzgledem

@@ -51,7 +51,7 @@ namespace
 	FString Dokad(const ABudowa* B)
 	{
 		const FString& M = B->Rodzaj().Model;
-		if (M == TEXT("SM_Spichlerz")) { return TEXT("do spichlerza"); }
+		if (M.StartsWith(TEXT("SM_Spichlerz"))) { return TEXT("do spichlerza"); }
 		if (M == TEXT("SM_Ognisko")) { return TEXT("do obozu"); }
 		return TEXT("na plac");
 	}
@@ -1752,7 +1752,7 @@ void ALudzik::ZadaniePasterza()
 		if (Owca < 0)
 		{
 			Krok = EKrok::Wraca;
-			IdzDo(B->ZUkladu(FVector2D(FMath::FRandRange(-R.Zagroda.X, R.Zagroda.X), FMath::FRandRange(100.0, R.Zagroda.Y))));
+			IdzDo(B->ZUkladu(R.PunktPastwiska()));
 			Status = TEXT("pilnuje owiec (runo odrasta)");
 			return;
 		}

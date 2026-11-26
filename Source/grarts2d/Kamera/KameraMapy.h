@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Kamera/KameraMapy.h
+﻿// Plik: Source/grarts2d/Kamera/KameraMapy.h
 // Kamera jak w Google Maps: kolko przybliza/oddala do punktu pod kursorem (od 25 m do calej Europy),
 // przeciaganie lewym przyciskiem przesuwa mape, WASD/strzalki przesuwaja, Q/E obracaja plynnie o dowolny kat (21.11.2026:
 // takze na mapie grywalnej, wczesniej skokami po 90 st.), przeciaganie srodkowym przyciskiem w bok obraca kamere
@@ -33,6 +33,8 @@ public:
 	FVector Ognisko() const { return Focus; }
 	float Oddalenie() const { return Odl; }
 	bool WRegionie() const { return bRegion; }
+	/** Obrot kamery wokol pionu (st.) - prostokat widoku na minimapie. */
+	float Obrot() const { return Yaw; }
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
@@ -104,7 +106,7 @@ public:
 	float MinOdlRegionu = 2.5e4f;
 
 	UPROPERTY(EditAnywhere, Category = "Region")
-	float MaxOdlRegionu = 1.5e5f;
+	float MaxOdlRegionu = 2.2e5f; // P5 26.11.2026: bylo 1.5e5, uzytkownik chcial wieksze oddalenie
 
 	/** Najwieksza predkosc jazdy w regionie (cm/s, z Shiftem) - kafle 512 m musza nadazyc sie policzyc. */
 	UPROPERTY(EditAnywhere, Category = "Region")
