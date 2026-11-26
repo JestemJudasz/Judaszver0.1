@@ -9,6 +9,7 @@
 #include "Widgets/SLeafWidget.h"
 
 class ARody;
+class APlayerController;
 
 class SZnakiArmii : public SLeafWidget
 {
@@ -21,6 +22,9 @@ public:
 	virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Clip, FSlateWindowElementList& Out,
 		int32 Warstwa, const FWidgetStyle& Styl, bool bRodzic) const override;
+
+	/** Id armii idacej na gracza (w czasie wojny), w ktorej choragiew kliknieto (Mysz = piksele ekranu); -1 = zadna. */
+	static int32 ArmiaPod(ARody* A, APlayerController* PC, FVector2D Mysz);
 
 private:
 	TWeakObjectPtr<ARody> RodyW;

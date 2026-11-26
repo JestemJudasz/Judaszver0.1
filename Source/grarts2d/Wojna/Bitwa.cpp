@@ -762,7 +762,7 @@ void ABitwa::Odeslij(FWojownik& W)
 		// Z pospolitego ruszenia: wraca do domu i do pracy (zywy, a takze ten, ktory uciekl z pola).
 		// Poprawka 25.11.2026: takze w drodze powrotnej (MarszW.Etap 3, RodW juz -1): rozwiazany oddzial pojawial sie
 		// pod osada rodu i szedl kilkadziesiat km przez mape.
-		if (RodW >= 0 || (MarszW.Etap == 3 && W.L->IsHidden()))
+		if (RodW >= 0 || PoleRod >= 0 || (MarszW.Etap == 3 && W.L->IsHidden()))
 		{
 			// z wyprawy: od razu pod oboz (nie idzie kilkudziesieciu km przez mape)
 			const FVector2D G = Dom + FVector2D(FMath::FRandRange(-800.f, 800.f), FMath::FRandRange(-800.f, 800.f));
@@ -2475,6 +2475,17 @@ void ABitwa::SprawdzKoniec()
 			T = Zwyciezca == 0 ? FString::Printf(TEXT("Osada %s zdobyta! Zdecyduj, co z nią zrobić"), *Nazwa)
 				: FString::Printf(TEXT("Wyprawa na %s odparta, ocaleni wracają do domu"), *Nazwa);
 		}
+		const bool bZPola = PoleRod >= 0;
+		if (bZPola)
+		{
+			// Bitwa w polu (przechwycenie): wygrana = armia rozbita, oblezenia nie bedzie; przegrana = idzie dalej.
+			const FString NR = Rody() && Rody()->Lista().IsValidIndex(PoleRod) ? Rody()->Lista()[PoleRod].Nazwa : FString(TEXT("Wrogowie"));
+			T = Zwyciezca == 0 ? FString::Printf(TEXT("%s rozbici w polu! Do oblężenia nie dojdzie"), *NR)
+				: FString::Printf(TEXT("%s pokonali wasze wojsko w polu i idą dalej na osadę"), *NR);
+			if (Rody()) { Rody()->PoPrzechwyceniu(PoleArmia, Zwyciezca == 0, Pol[1], SkalaNapadu); }
+			PoleRod = -1;
+			PoleArmia = -1;
+		}
 		if (NapadRoduI >= 0 && RodW < 0)
 		{
 			const FString NR = Rody() && Rody()->Lista().IsValidIndex(NapadRoduI) ? Rody()->Lista()[NapadRoduI].Nazwa : FString(TEXT("Wrogowie"));
@@ -2489,6 +2500,10 @@ void ABitwa::SprawdzKoniec()
 		if (RodW >= 0 && Zwyciezca == 0)
 		{
 			bZdobyta = true; // panel wyboru (ZrobInterfejs)
+		}
+		else if (bZPola)
+		{
+			KoniecWyprawy(); // po bitwie w polu ocaleni wracaja do domu
 		}
 		else if (RodW >= 0)
 		{
@@ -3370,7 +3385,7 @@ bool ABitwa::Wyprawa(int32 RI, FString& Powod)
 		Powod = TEXT("Nie wiadomo, dokąd iść.");
 		return false;
 	}
-	if (RodW >= 0 || MarszW.Etap != 0)
+	if (RodW >= 0 || MarszW.Etap != 0 || PoleRod >= 0)
 	{
 		Powod = TEXT("Jedna wyprawa już trwa.");
 		return false;
@@ -3443,8 +3458,154 @@ bool ABitwa::Wyprawa(int32 RI, FString& Powod)
 	return true;
 }
 
+bool ABitwa::Przechwyc(int32 RI, FVector2D Miejsce, int32 Armia, FString& Powod)
+{
+	ARody* Ro = Rody();
+	AOsada* Wies = Osada();
+	if (!Ro || !Wies || !Wies->MaOboz() || !Ro->Lista().IsValidIndex(RI))
+	{
+		Powod = TEXT("Nie wiadomo, dokąd iść.");
+		return false;
+	}
+	if (RodW >= 0 || MarszW.Etap != 0 || PoleRod >= 0 || NapadRoduI >= 0)
+	{
+		Powod = TEXT("Wasze wojsko jest już w drodze albo walczy.");
+		return false;
+	}
+	for (const FOddzial& X : Oddz)
+	{
+		if (X.Strona == 1 && X.Stoi())
+		{
+			Powod = TEXT("Najpierw rozbijcie wrogów, którzy są na polu.");
+			return false;
+		}
+	}
+	TArray<int32> Moi;
+	for (int32 i = 0; i < Oddz.Num(); ++i)
+	{
+		if (Oddz[i].Strona == 0 && Oddz[i].Milicja >= 0 && Oddz[i].Stoi()) { Moi.Add(i); }
+	}
+	if (Moi.Num() == 0)
+	{
+		Powod = TEXT("Najpierw powołajcie pospolite ruszenie (Wojsko, J): naprzeciw idą powołani.");
+		return false;
+	}
+	const FRod& R = Ro->Lista()[RI];
+	Dom = Wies->Oboz();
+	FVector2D Na = (Dom - Miejsce).GetSafeNormal();
+	if (Na.IsNearlyZero())
+	{
+		Na = FVector2D(1.f, 0.f);
+	}
+	PoleRod = RI;
+	PoleArmia = Armia;
+	MarszW = FMarsz();
+	MarszW.Etap = 1;
+	MarszW.bPole = true;
+	MarszW.Oddzialy = Moi;
+	MarszW.Na = Na;
+	MarszW.Wejscie = Miejsce - Na * 6000.f; // CelMarszu() = Miejsce
+	MarszW.Caly = CzasMarszu(Dl(Dom, Miejsce));
+	const FVector2D Kier = -Na;
+	for (int32 n = 0; n < Moi.Num(); ++n)
+	{
+		FOddzial& O = Oddz[Moi[n]];
+		O.Rozkaz = ERozkaz::Idz;
+		O.CelRuchu = O.Srodek + Kier * 6000.f;
+		O.Trasa.Reset();
+		O.bDoFrontu = O.bBiegiem = false;
+	}
+	Wybrane.Reset();
+	Powod = FString::Printf(TEXT("Wasze wojsko wychodzi naprzeciw %s: spotkacie się w polu za ok. %.0f s"), *R.Nazwa, MarszW.Caly + 8.f);
+	Wies->Ogloszenie(Powod);
+	UE_LOG(LogTemp, Log, TEXT("Bitwa: przechwycenie armii %s (%d oddzialow, %.0f m od osady, marsz %.0f s)"), *R.Nazwa, Moi.Num(), Dl(Dom, Miejsce) / 100.f, MarszW.Caly);
+	return true;
+}
+
+void ABitwa::DotarliPole()
+{
+	ARody* Ro = Rody();
+	AOsada* Wies = Osada();
+	const FVector2D Miejsce = MarszW.Wejscie + MarszW.Na * 6000.f, Na = MarszW.Na;
+	const FVector2D Prawo(-Na.Y, Na.X);
+	const TArray<int32> Moi = MarszW.Oddzialy.FilterByPredicate([this](int32 i) { return Oddz.IsValidIndex(i) && Oddz[i].Stoi(); });
+	MarszW.Etap = 0;
+	int32 Woje = 0, Chlopi = 0;
+	const bool bJest = Ro && Ro->Lista().IsValidIndex(PoleRod) && Ro->ArmiaCzekaNaBitwe(PoleArmia) && Ro->LudzieArmii(PoleArmia, Woje, Chlopi)
+		&& Woje + Chlopi > 0;
+	if (!bJest || Moi.Num() == 0)
+	{
+		// Armia zawrocila (pokoj) albo poszla dalej: wojsko wraca do domu.
+		if (Ro && Moi.Num() == 0) { Ro->PoPrzechwyceniu(PoleArmia, false, 0, 1.f); }
+		PoleRod = -1;
+		PoleArmia = -1;
+		UkryjMarsz(false);
+		KoniecWyprawy();
+		if (Wies) { Wies->Ogloszenie(TEXT("Na miejscu spotkania nikogo nie ma, wojsko wraca do domu")); }
+		return;
+	}
+	const FRod& R = Ro->Lista()[PoleRod];
+	Krople.Reset();
+	KropleC->ClearInstances();
+	PlamyC->ClearInstances();
+	NastPlama = 0;
+	WbiteC->ClearInstances();
+	NastWbita = 0;
+	Przygotuj(Miejsce);
+	// Wasi wychodza od strony osady i staja 30 m od miejsca spotkania, wrogowie naprzeciw.
+	for (int32 n = 0; n < Moi.Num(); ++n)
+	{
+		FOddzial& O = Oddz[Moi[n]];
+		const FVector2D Gdzie = Miejsce + Na * 3000.f + Prawo * ((n - (Moi.Num() - 1) * 0.5f) * 1500.f);
+		Przenies(O, Gdzie + Na * 2500.f, -Na);
+		O.Rozkaz = ERozkaz::Idz;
+		O.CelRuchu = Gdzie;
+		O.FrontCelu = -Na;
+	}
+	UkryjMarsz(false);
+	SkalaNapadu = FMath::Max(1.f, (Woje + Chlopi) / 60.f);
+	const int32 NW = FMath::RoundToInt32(Woje / SkalaNapadu);
+	const int32 NC = FMath::Max(Woje > 0 ? 0 : 6, FMath::RoundToInt32(Chlopi / SkalaNapadu));
+	const ERodzajWojska Pierwszy = R.Cecha == ECechaRodu::Wojowniczy ? ERodzajWojska::Tarczownicy : ERodzajWojska::Wlocznicy;
+	const ERodzajWojska Drugi = R.Cecha == ECechaRodu::Wojowniczy ? ERodzajWojska::Miecznicy
+		: (R.Cecha == ECechaRodu::Kupiecki ? ERodzajWojska::Kusznicy : ERodzajWojska::Lucznicy);
+	struct FGrupa { ERodzajWojska Rd; int32 Ilu; int32 Dosw; };
+	TArray<FGrupa> Grupy;
+	auto Dziel = [&Grupy](ERodzajWojska Rd, int32 Ilu, int32 Dosw)
+	{
+		const int32 N = FMath::DivideAndRoundUp(Ilu, 14);
+		for (int32 g = 0; g < N; ++g) { Grupy.Add({ Rd, Ilu / N + (g < Ilu % N ? 1 : 0), Dosw }); }
+	};
+	const int32 NDrugi = NW / 3;
+	if (NW - NDrugi > 0) { Dziel(Pierwszy, NW - NDrugi, 1); }
+	if (NDrugi > 0) { Dziel(Drugi, NDrugi, 1); }
+	if (NC > 0) { Dziel(ERodzajWojska::Chlopi, NC, 0); }
+	for (int32 g = 0; g < Grupy.Num(); ++g)
+	{
+		const FGrupa& Gr = Grupy[g];
+		const bool bStrzelcy = RodzajWojska(Gr.Rd).Strzela();
+		const float Glebia = bStrzelcy ? 4200.f : (Gr.Rd == ERodzajWojska::Chlopi ? 3600.f : 2800.f);
+		const FVector2D Gdzie = Miejsce - Na * Glebia + Prawo * ((g - (Grupy.Num() - 1) * 0.5f) * 1400.f);
+		const FLinearColor Tun = FMath::Lerp(RodzajWojska(Gr.Rd).Tunika, R.Barwa, 0.55f);
+		const int32 i = DodajOddzial(Gr.Rd, FString::Printf(TEXT("%s: %s"), *R.Nazwa, RodzajWojska(Gr.Rd).Nazwa), 1, Gr.Ilu, Gdzie, Na, Gr.Dosw, Tun);
+		Oddz[i].Barwa = R.Barwa;
+		Oddz[i].Start = CzasBitwy + 8.f;
+	}
+	Rozpocznij();
+	Wybrane = Moi;
+	PokazKamere(Miejsce + Na * 1500.f);
+	const FString Powod = FString::Printf(TEXT("Bitwa w polu z %s: %d wojów i %d chłopa naprzeciw was. Rozbijcie ich, zanim dojdą do osady!"), *R.Nazwa, Woje, Chlopi);
+	if (Wies) { Wies->Ogloszenie(Powod); }
+	UE_LOG(LogTemp, Log, TEXT("Bitwa: bitwa w polu z %s (%d oddzialow gracza, %d wojow, %d chlopow, skala %.1f)"), *R.Nazwa, Moi.Num(), Woje, Chlopi, SkalaNapadu);
+}
+
 void ABitwa::Dotarli()
 {
+	if (MarszW.bPole)
+	{
+		DotarliPole();
+		return;
+	}
 	ARody* Ro = Rody();
 	AOsadaRodu* V = CelWyprawy();
 	if (!Ro || !V || !Ro->Lista().IsValidIndex(RodW))

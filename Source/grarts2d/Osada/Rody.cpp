@@ -1255,6 +1255,7 @@ void ARody::Wladca(int32 I)
 			A.Dokad = Rody[Cel].Gdzie;
 			A.Caly = CzasMarszuArmii(float(FVector2D::Distance(A.Skad, A.Dokad)));
 			A.Woje = R.Woje;
+			A.Id = ++NastIdArmii;
 			ArmieL.Add(A);
 			Ogloszenie(FString::Printf(TEXT("%s wyruszyli na %s (%d wojów)"), *R.Nazwa, *Rody[Cel].Nazwa, R.Woje));
 		}
@@ -1296,6 +1297,7 @@ void ARody::Wladca(int32 I)
 				A.Caly = CzasMarszuArmii(float(FVector2D::Distance(A.Skad, A.Dokad)));
 				A.Woje = R.Woje;
 				A.Chlopi = FMath::Clamp(R.Rodzin / 4, 2, 30);
+				A.Id = ++NastIdArmii;
 				ArmieL.Add(A);
 				Ogloszenie(FString::Printf(TEXT("%s wyruszyli na waszą osadę: %d wojów i %d chłopa. Dojdą za ok. %.0f s - powołajcie ruszenie (J)!"),
 					*R.Nazwa, A.Woje, A.Chlopi, A.Caly));
@@ -1534,6 +1536,131 @@ void ARody::PoNapadzieNaGracza(int32 RI, bool bZLupem, const FSurowce& Lup, int3
 	Dziennik(R, FString::Printf(TEXT("NAPAD NA GRACZA: %s, poległo %d"), bZLupem ? TEXT("z łupem") : TEXT("odparty"), Straty));
 }
 
+int32 ARody::ArmiaNaGracza(int32 R) const
+{
+	for (const FArmia& A : ArmieL)
+	{
+		if (A.Rod == R && A.Cel < 0 && !A.bCzeka && !A.bPrzechwycona)
+		{
+			return A.Id;
+		}
+	}
+	return -1;
+}
+
+bool ARody::ArmiaCzekaNaBitwe(int32 Id) const
+{
+	const FArmia* A = ArmieL.FindByPredicate([Id](const FArmia& X) { return X.Id == Id; });
+	return A && A->bPrzechwycona;
+}
+
+bool ARody::LudzieArmii(int32 Id, int32& Woje, int32& Chlopi) const
+{
+	const FArmia* A = ArmieL.FindByPredicate([Id](const FArmia& X) { return X.Id == Id; });
+	if (!A)
+	{
+		return false;
+	}
+	Woje = A->Woje;
+	Chlopi = A->Chlopi;
+	return true;
+}
+
+bool ARody::Przechwyc(int32 Id, FString& Powod)
+{
+	FArmia* A = ArmieL.FindByPredicate([Id](const FArmia& X) { return X.Id == Id; });
+	if (!A || !Rody.IsValidIndex(A->Rod) || A->Cel >= 0)
+	{
+		Powod = TEXT("Ta armia nie idzie na was.");
+		return false;
+	}
+	const FRod& R = Rody[A->Rod];
+	if (!R.bWojna)
+	{
+		Powod = FString::Printf(TEXT("Nie ma wojny z %s."), *R.Nazwa);
+		return false;
+	}
+	if (A->bPrzechwycona)
+	{
+		Powod = TEXT("Wasze wojsko już idzie im naprzeciw.");
+		return false;
+	}
+	if (A->bCzeka)
+	{
+		Powod = TEXT("Stoją już pod osadą: brońcie się na miejscu (Wojsko, J).");
+		return false;
+	}
+	AOsada* O = Osada.Get();
+	ABitwa* B = nullptr;
+	if (GetWorld())
+	{
+		for (TActorIterator<ABitwa> It(GetWorld()); It; ++It) { B = *It; break; }
+	}
+	if (!O || !O->MaOboz() || !B)
+	{
+		Powod = TEXT("Nie ma kogo wysłać.");
+		return false;
+	}
+	// Miejsce spotkania: gdzie armia bedzie, kiedy wojsko gracza tam dojdzie (wymarsz ok. 12 s + marsz wyprawy).
+	const FVector2D Dom = O->Oboz();
+	float T = A->Czas;
+	FVector2D M = A->Gdzie();
+	for (int32 k = 0; k < 6; ++k)
+	{
+		const float Tp = 12.f + ABitwa::CzasMarszu(float(FVector2D::Distance(Dom, M)));
+		T = FMath::Min(A->Czas + Tp, A->Caly * 0.97f);
+		M = FMath::Lerp(A->Skad, A->Dokad, FMath::Clamp(T / FMath::Max(1.f, A->Caly), 0.f, 1.f));
+	}
+	if (FVector2D::Distance(Dom, M) < 12000.0)
+	{
+		Powod = FString::Printf(TEXT("%s są już blisko osady: nie zdążycie wyjść naprzeciw, brońcie się na miejscu."), *R.Nazwa);
+		return false;
+	}
+	if (!B->Przechwyc(A->Rod, M, Id, Powod))
+	{
+		return false;
+	}
+	A->bPrzechwycona = true;
+	A->StopCzas = FMath::Max(T, A->Czas);
+	A->StopCzeka = 0.f;
+	Dziennik(Rody[A->Rod], FString::Printf(TEXT("PRZECHWYCENIE: gracz wychodzi naprzeciw (%.0f m od osady gracza)"), FVector2D::Distance(Dom, M) / 100.0));
+	return true;
+}
+
+void ARody::PoPrzechwyceniu(int32 Id, bool bWygrana, int32 Poleglo, float Skala)
+{
+	const int32 k = ArmieL.IndexOfByPredicate([Id](const FArmia& X) { return X.Id == Id; });
+	if (k == INDEX_NONE)
+	{
+		return;
+	}
+	FArmia& A = ArmieL[k];
+	const int32 Wszyscy = FMath::Max(1, A.Woje + A.Chlopi);
+	const int32 Straty = FMath::Min(Wszyscy, FMath::RoundToInt32(Poleglo * FMath::Max(1.f, Skala)));
+	if (Rody.IsValidIndex(A.Rod))
+	{
+		FRod& R = Rody[A.Rod];
+		const int32 Wojow = FMath::Min(R.Woje, FMath::Min(A.Woje, Straty));
+		R.Woje -= Wojow;
+		R.Rodzin = FMath::Max(2, R.Rodzin - (Straty - Wojow) / 3);
+		R.Stosunek = FMath::Max(-100.f, R.Stosunek - 10.f);
+		Dziennik(R, FString::Printf(TEXT("BITWA W POLU z graczem: %s, poleglo %d"), bWygrana ? TEXT("rozbici") : TEXT("wygrana, ida dalej"), Straty));
+	}
+	if (bWygrana)
+	{
+		ArmieL.RemoveAt(k); // rozbici, oblezenia nie bedzie
+		return;
+	}
+	const int32 Zost = Wszyscy - Straty;
+	A.Woje = FMath::RoundToInt32(A.Woje * float(Zost) / Wszyscy);
+	A.Chlopi = FMath::Max(0, Zost - A.Woje);
+	A.bPrzechwycona = false;
+	if (A.Woje + A.Chlopi <= 0)
+	{
+		ArmieL.RemoveAt(k);
+	}
+}
+
 void ARody::ArmieTick(float Dt)
 {
 	for (int32 k = ArmieL.Num() - 1; k >= 0; --k)
@@ -1545,6 +1672,17 @@ void ARody::ArmieTick(float Dt)
 			continue;
 		}
 		A.Czas += Dt;
+		if (A.bPrzechwycona && A.Czas >= A.StopCzas)
+		{
+			// Stoi w miejscu spotkania i czeka na wojsko gracza (bitwa w polu); bez bitwy po 120 s idzie dalej.
+			A.Czas = A.StopCzas;
+			A.StopCzeka += Dt;
+			if (A.StopCzeka > 120.f)
+			{
+				A.bPrzechwycona = false;
+			}
+			continue;
+		}
 		if (A.Czas < A.Caly)
 		{
 			continue;

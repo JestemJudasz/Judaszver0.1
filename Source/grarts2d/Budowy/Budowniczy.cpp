@@ -2200,6 +2200,19 @@ void ABudowniczy::Tick(float DeltaSeconds)
 		UstawInfo();
 		UstawPomoc();
 	}
+	// Klik w choragiew armii idacej na was (w czasie wojny, obie mapy): wojsko wychodzi naprzeciw (26.11.2026).
+	if (Rody && !Wybrany && !(Drogi && Drogi->Rysuje()) && PC->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+	{
+		float MX = 0.f, MY = 0.f;
+		PC->GetMousePosition(MX, MY);
+		const int32 Id = SZnakiArmii::ArmiaPod(Rody.Get(), PC, FVector2D(MX, MY));
+		if (Id >= 0)
+		{
+			FString Powod;
+			Rody->Przechwyc(Id, Powod);
+			Osada->Ogloszenie(Powod);
+		}
+	}
 	if (!bRegion)
 	{
 		return;

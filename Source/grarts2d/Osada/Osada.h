@@ -234,6 +234,8 @@ public:
 	void Zwroc(ESurowiec S, int32 Ile);
 	/** Bierze do Ile sztuk S z budynkow (tylko nie zarezerwowane); zwraca, ile wzial (ruszenie bierze wlocznie). */
 	int32 Wez(ESurowiec S, int32 Ile);
+	/** Wszystkie budynki osady (sciezki od drzwi do drog, ADrogi). */
+	const TArray<TWeakObjectPtr<ABudowa>>& WszystkieBudynki() const { return Budynki; }
 
 private:
 	struct FRodzina

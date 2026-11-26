@@ -461,6 +461,23 @@ TSharedRef<SWidget> SOknoRodow::Dyplomacja()
 					},
 					[this]() { FString P; const bool b = RodyW.IsValid() && RodyW->ZawrzyjPokoj(Wybrany, P); Wynik(b, P); })
 			]
+			// Przechwycenie (26.11.2026): ich armia idzie na was - powolane ruszenie wychodzi naprzeciw, bitwa w polu.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.f, 0.f, 0.f, 0.f)
+			[
+				Guzik(FText::FromString(TEXT("Wyjdź naprzeciw")),
+					[this]() { const FRod* R = Rod(); return R && R->bWojna && RodyW.IsValid() && RodyW->ArmiaNaGracza(Wybrany) >= 0; },
+					[]() { return FText::FromString(TEXT("Ich armia idzie na waszą osadę: powołane ruszenie (Wojsko, J) wychodzi jej naprzeciw i bije się w polu, zanim dojdzie do oblężenia. Można też kliknąć chorągiew armii na mapie.")); },
+					[this]()
+					{
+						FString P;
+						const bool b = RodyW.IsValid() && RodyW->Przechwyc(RodyW->ArmiaNaGracza(Wybrany), P);
+						Wynik(b, P);
+						if (b)
+						{
+							NaZamknij.ExecuteIfBound();
+						}
+					})
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(8.f, 0.f, 0.f, 0.f)
 			[
 				SNew(STextBlock)

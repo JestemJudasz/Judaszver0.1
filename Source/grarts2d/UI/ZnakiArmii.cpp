@@ -14,6 +14,37 @@
 #include "Styling/CoreStyle.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Osada/Osada.h"
+#include "InputCoreTypes.h"
+
+int32 SZnakiArmii::ArmiaPod(ARody* A, APlayerController* PC, FVector2D Mysz)
+{
+	const AKameraMapy* Kam = PC ? Cast<AKameraMapy>(PC->GetPawn()) : nullptr;
+	if (!A || !Kam)
+	{
+		return -1;
+	}
+	for (const ARody::FArmia& Ar : A->Armie())
+	{
+		if (Ar.Cel >= 0 || Ar.bCzeka || Ar.bPrzechwycona || !A->Lista().IsValidIndex(Ar.Rod) || !A->Lista()[Ar.Rod].bWojna)
+		{
+			continue;
+		}
+		const FVector2D P = Ar.Gdzie();
+		FVector2D E;
+		if (!PC->ProjectWorldLocationToScreen(FVector(P.X, P.Y, Kam->WRegionie() ? FSwiat::Wysokosc(P.X, P.Y) : 0.0), E, false))
+		{
+			continue;
+		}
+		// choragiew stoi nad punktem kolumny: drzewiec w gore, napisy w prawo (z zapasem na skale ekranu)
+		const FVector2D D = Mysz - E;
+		if (D.X > -30.0 && D.X < 220.0 && D.Y > -110.0 && D.Y < 25.0)
+		{
+			return Ar.Id;
+		}
+	}
+	return -1;
+}
 
 int32 SZnakiArmii::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSlateRect& Clip, FSlateWindowElementList& Out,
 	int32 L, const FWidgetStyle& Styl, bool bRodzic) const
@@ -78,8 +109,13 @@ int32 SZnakiArmii::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 			continue;
 		}
 		const FString Dokad = bNaNas ? FString(TEXT("na waszą osadę")) : (A->Lista().IsValidIndex(Ar.Cel) ? TEXT("na ") + A->Lista()[Ar.Cel].Nazwa : FString());
-		const FString Podpis = Ar.bCzeka ? FString::Printf(TEXT("pod waszą osadą! %d ludzi"), Ar.Woje + Ar.Chlopi)
+		FString Podpis = Ar.bCzeka ? FString::Printf(TEXT("pod waszą osadą! %d ludzi"), Ar.Woje + Ar.Chlopi)
+			: Ar.bPrzechwycona ? FString::Printf(TEXT("czekają na bitwę w polu · %d ludzi"), Ar.Woje + Ar.Chlopi)
 			: FString::Printf(TEXT("%s · %d ludzi · %.0f s"), *Dokad, Ar.Woje + Ar.Chlopi, FMath::Max(0.f, Ar.Caly - Ar.Czas));
+		if (bNaNas && !Ar.bCzeka && !Ar.bPrzechwycona && R.bWojna)
+		{
+			Podpis += TEXT(" · kliknij: wyjdź naprzeciw");
+		}
 		FHerb::Rodu(R.Nazwa, R.Barwa).Choragiew(Out, L + 2, G, E, S, R.Nazwa, Podpis, bNaNas ? StylUI::Czerwony : StylUI::Szary);
 	}
 	// Wasza wyprawa w drodze.
@@ -92,18 +128,20 @@ int32 SZnakiArmii::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 		{
 			continue;
 		}
-		const int32 RW = It->RodWyprawy();
+		const int32 RP = It->RodPrzechwycenia();
+		const int32 RW = RP >= 0 ? RP : It->RodWyprawy();
 		const FString Cel = A->Lista().IsValidIndex(RW) ? A->Lista()[RW].Nazwa : FString();
 		int32 Ludzi = 0;
 		for (const FOddzial& O : It->Oddzialy()) { Ludzi += O.Strona == 0 && O.Milicja >= 0 ? O.NaPolu() : 0; }
 		if (A->Lista().IsValidIndex(RW) && !bPowrot)
 		{
-			Droga(P, A->Lista()[RW].Gdzie, FLinearColor(0.9f, 0.7f, 0.3f, 0.8f));
+			Droga(P, RP >= 0 ? It->CelMarszu() : A->Lista()[RW].Gdzie, FLinearColor(0.9f, 0.7f, 0.3f, 0.8f));
 		}
 		FVector2f E;
 		if (Rzut(P, E))
 		{
-			FHerb::Gracza().Choragiew(Out, L + 2, G, E, S, bPowrot ? TEXT("Wasza wyprawa wraca") : TEXT("Wasza wyprawa"),
+			const TCHAR* Kto = bPowrot ? TEXT("Wasza wyprawa wraca") : (RP >= 0 ? TEXT("Wasze wojsko naprzeciw") : TEXT("Wasza wyprawa"));
+			FHerb::Gracza().Choragiew(Out, L + 2, G, E, S, Kto,
 				FString::Printf(TEXT("%s%s · %d%% drogi"), bPowrot ? TEXT("z ") : TEXT("na "), *Cel, FMath::RoundToInt32(Postep * 100.f)), StylUI::Zloto);
 		}
 	}

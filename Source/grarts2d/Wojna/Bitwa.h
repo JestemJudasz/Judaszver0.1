@@ -220,6 +220,13 @@ public:
 	 *  (woje rodu i chlopi, przy 10+ wojach lucznicy). Rozkaz ataku na obroncow prowadzi pod brame: woje rabia ja
 	 *  toporami, az padnie; wtedy obroncy wychodza do walki. Po zwyciestwie gracz wybiera los osady (PoZdobyciu). */
 	bool Wyprawa(int32 Rod, FString& Powod);
+	/** Wyjscie naprzeciw armii rodu (ARody::Przechwyc, 26.11.2026): powolane ruszenie maszeruje do Miejsca jak wyprawa,
+	 *  tam bitwa w polu z armia Armia (ludzie z ARody, duze armie pomniejszone jak przy napadzie). */
+	bool Przechwyc(int32 Rod, FVector2D Miejsce, int32 Armia, FString& Powod);
+	/** Rod, ktorego armie wasze wojsko idzie przechwycic albo z ktora walczy w polu (-1 = brak). */
+	int32 RodPrzechwycenia() const { return PoleRod; }
+	/** Dokad idzie kolumna wyprawy albo przechwycenia (pod brame / miejsce spotkania). */
+	FVector2D CelMarszu() const { return MarszW.Wejscie + MarszW.Na * 6000.f; }
 	/** Ilu obroncow wystawi rod (woje + co trzecia rodzina, 6..60). */
 	static int32 Obroncow(int32 Woje, int32 Rodzin) { return FMath::Clamp(Woje + Rodzin / 3, 6, 60); }
 	int32 RodWyprawy() const { return RodW; }
@@ -280,11 +287,15 @@ private:
 		float Czas = 0.f, Caly = 10.f;
 		TArray<int32> Oddzialy;
 		FVector2D Wejscie = FVector2D::ZeroVector, Na = FVector2D(1.f, 0.f);
+		bool bPole = false; // przechwycenie: bitwa w polu w Wejscie + Na * 6000 zamiast pod brama
 	};
 	FMarsz MarszW;
 	void MarszTick(float Dt);
 	/** Wyprawa doszla: oddzialy pod brama, obroncy w murach, kamera. */
 	void Dotarli();
+	/** Przechwycenie doszlo: oddzialy gracza i armia rodu naprzeciw siebie w polu. */
+	void DotarliPole();
+	int32 PoleRod = -1, PoleArmia = -1;
 	void UkryjMarsz(bool bUkryj);
 	// Palenie (24.11.2026, prosba: "zaznaczyc spal ten budynek", "po wyborze Spalic jednostki biegaja, morduja, pala"):
 	// oddzial -> dzialka osady rodu do podpalenia (prawy klik w budynek), -1 = pali, co popadnie (po wyborze Spalic).

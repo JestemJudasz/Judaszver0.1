@@ -12,6 +12,8 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Algo/Reverse.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 
 TWeakObjectPtr<ADrogi> ADrogi::Aktywne;
 
@@ -23,7 +25,68 @@ namespace
 		const float X = FMath::Clamp(1.f - D / (W * 2.4f), 0.f, 1.f);
 		return 0.9f * X * X * (3.f - 2.f * X);
 	}
+
+	/** Przeciecie odcinkow AB i CD (X = punkt). */
+	bool Przeciecie(FVector2D A, FVector2D B, FVector2D C, FVector2D D, FVector2D& X)
+	{
+		const FVector2D R = B - A, S = D - C;
+		const double Den = R ^ S;
+		if (FMath::Abs(Den) < 1e-3)
+		{
+			return false;
+		}
+		const double T = ((C - A) ^ S) / Den, U = ((C - A) ^ R) / Den;
+		if (T < 0.0 || T > 1.0 || U < 0.0 || U > 1.0)
+		{
+			return false;
+		}
+		X = A + R * T;
+		return true;
+	}
+
+	/** Ubita ziemia skrzyzowan i laczen: bez kolein i trawy posrodku (26.11.2026). */
+	const FLinearColor Ubita(0.33f, 0.25f, 0.16f);
 }
+
+/** Wierzcholki jednej sekcji ProceduralMesh drog (laty skrzyzowan, sciezki). */
+struct FSiatkaDrogi
+{
+	FVector Baza;
+	TArray<FVector> V;
+	TArray<int32> T;
+	TArray<FVector> Nrm;
+	TArray<FVector2D> UV;
+	TArray<FLinearColor> Kol;
+	TArray<FProcMeshTangent> Tg;
+
+	explicit FSiatkaDrogi(FVector InBaza) : Baza(InBaza) {}
+
+	int32 Punkt(FVector2D Q, float Nad, FLinearColor K, float A)
+	{
+		const float H = FSwiat::WysokoscKafla(Q.X, Q.Y);
+		const float Hx = FSwiat::Wysokosc(Q.X + 50.0, Q.Y) - FSwiat::Wysokosc(Q.X - 50.0, Q.Y);
+		const float Hy = FSwiat::Wysokosc(Q.X, Q.Y + 50.0) - FSwiat::Wysokosc(Q.X, Q.Y - 50.0);
+		V.Add(FVector(Q.X - Baza.X, Q.Y - Baza.Y, H + Nad - Baza.Z));
+		Nrm.Add(FVector(-Hx / 100.f, -Hy / 100.f, 1.f).GetSafeNormal());
+		UV.Add(FVector2D((Q.X - Baza.X) / 400.0, (Q.Y - Baza.Y) / 400.0));
+		Kol.Add(FLinearColor(K.R, K.G, K.B, A));
+		Tg.Add(FProcMeshTangent(1.f, 0.f, 0.f));
+		return V.Num() - 1;
+	}
+
+	void Do(UProceduralMeshComponent* C, int32 Sekcja, UMaterialInterface* M) const
+	{
+		if (T.Num() == 0)
+		{
+			return;
+		}
+		C->CreateMeshSection_LinearColor(Sekcja, V, T, Nrm, UV, Kol, Tg, false);
+		if (M)
+		{
+			C->SetMaterial(Sekcja, M);
+		}
+	}
+};
 
 ADrogi::ADrogi()
 {
@@ -32,7 +95,9 @@ ADrogi::ADrogi()
 	RootComponent = Siatki;
 	Szkic = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Szkic"));
 	Szkic->SetupAttachment(Siatki);
-	for (UProceduralMeshComponent* C : { Siatki.Get(), Szkic.Get() })
+	Sciezki = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Sciezki"));
+	Sciezki->SetupAttachment(Siatki);
+	for (UProceduralMeshComponent* C : { Siatki.Get(), Szkic.Get(), Sciezki.Get() })
 	{
 		C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		C->SetCastShadow(false);
@@ -61,6 +126,7 @@ void ADrogi::BeginPlay()
 	{
 		MaterialSzkicu = UMaterialInstanceDynamic::Create(Pod, this);
 	}
+	GetWorldTimerManager().SetTimer(ZegarSciezek, this, &ADrogi::SprawdzSciezki, 2.f, true, 1.f);
 }
 
 void ADrogi::EndPlay(const EEndPlayReason::Type Reason)
@@ -356,7 +422,8 @@ void ADrogi::Krzywa(FVector2D A, FVector2D KierA, FVector2D B, FVector2D KierB, 
 	if ((KierA | U) < -0.1) { KierA = FVector2D::ZeroVector; }
 	if ((KierB | U) < -0.1) { KierB = FVector2D::ZeroVector; }
 	const bool bA = !KierA.IsNearlyZero(), bB = !KierB.IsNearlyZero();
-	const double H = L * 0.4;
+	// 26.11.2026 (uwaga: luki "zle sie wyginaja"): krotsze styczne, luk najwyzej 12 m - droga idzie blizej kursora.
+	const double H = FMath::Min(L * 0.28, 1200.0);
 	const FVector2D C1 = bA ? A + KierA * H : A + AB / 3.0;
 	const FVector2D C2 = bB ? B - KierB * H : (bA ? (C1 + B) * 0.5 : B - AB / 3.0);
 	auto Pt = [&](double T)
@@ -642,6 +709,12 @@ void ADrogi::Rysuj(APlayerController* PC, bool bJest, FVector2D P, bool bKlik)
 		// Wyjscie: dalej w kierunku drogi albo prostopadle ze srodka drogi. Dojscie: stycznie w koniec drogi, prostopadle w srodek.
 		auto Prostopadle = [](FVector2D Os, FVector2D Do) { const FVector2D N(-Os.Y, Os.X); return (Do | N) >= 0.0 ? N : -N; };
 		Ka = StartTryb == 2 ? Prostopadle(StartKier, Koniec - Start) : StartKier;
+		// Ciag dalej: luk tylko przy lagodnym skrecie (do ok. 55 st.), ostrzej = zakret w miejscu klikniecia, bez esow.
+		const FVector2D Dok = (Koniec - Start).GetSafeNormal();
+		if (StartTryb == 1 && (Ka | Dok) < 0.57)
+		{
+			Ka = FVector2D::ZeroVector;
+		}
 		Kb = Tryb == 1 ? -KierKonca : (Tryb == 2 ? -Prostopadle(KierKonca, Start - Koniec) : FVector2D::ZeroVector);
 	}
 	Krzywa(Start, Ka, Koniec, Kb, Pkt);
@@ -677,7 +750,7 @@ FString ADrogi::Pomoc() const
 
 // ------------------------------------------------------------------------------------------------------------ wyglad
 
-void ADrogi::Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVector2D>& P0, bool bKonce, float Nad, bool bWjazdA, bool bWjazdB) const
+void ADrogi::Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVector2D>& P0, bool bKonce, float Nad, bool bWjazdA, bool bWjazdB, int32 Ktory) const
 {
 	if (P0.Num() < 2)
 	{
@@ -729,9 +802,16 @@ void ADrogi::Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVec
 		const FVector2D D = (P[FMath::Min(i + 1, N - 1)] - P[FMath::Max(i - 1, 0)]).GetSafeNormal();
 		const FVector2D Nn(-D.Y, D.X);
 		const float Wi = W * (1.f + (bWjazdA ? Lejek(Odl[i], W) : 0.f) + (bWjazdB ? Lejek(Odl.Last() - Odl[i], W) : 0.f));
+		// Przy innej drodze koleiny i trawa posrodku przechodza w jednolita ubita ziemie: laczenia bez krzyzujacych sie kolein.
+		float Ub = 0.f;
+		if (Ktory >= 0)
+		{
+			const float D2 = OdInnejDrogi(Ktory, P[i], W * 3.f);
+			Ub = 1.f - FMath::SmoothStep(W * 0.9f, W * 2.8f, D2);
+		}
 		for (int32 j = 0; j < K; ++j)
 		{
-			Punkt(P[i] + Nn * (Wi * Off[j]), Alfa[j], Kolory[j]);
+			Punkt(P[i] + Nn * (Wi * Off[j]), Alfa[j], Alfa[j] > 0.f ? Kolory[j] * (1.f - Ub) + Ubita * Ub : Kolory[j]);
 		}
 	}
 	for (int32 i = 0; i + 1 < N; ++i)
@@ -750,12 +830,12 @@ void ADrogi::Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVec
 		{
 			const int32 S = V.Num();
 			// kolo troche nizej niz wstega, zeby nie migaly na sobie
-			Punkt(E, 1.f, Pobocze, -0.7f);
+			Punkt(E, 1.f, Ubita, -0.7f);
 			for (int32 k = 0; k < Ile; ++k)
 			{
 				const double Kat = 2.0 * PI * k / Ile;
 				const FVector2D R(FMath::Cos(Kat), FMath::Sin(Kat));
-				Punkt(E + R * (W * 0.62f), 1.f, Pobocze, -0.7f);
+				Punkt(E + R * (W * 0.62f), 1.f, Ubita, -0.7f);
 				Punkt(E + R * W, 0.f, Brzeg, -0.7f);
 			}
 			for (int32 k = 0; k < Ile; ++k)
@@ -776,13 +856,243 @@ void ADrogi::BudujSiatke()
 	{
 		// kazdy odcinek troche na innej wysokosci: nachodzace na siebie (skrzyzowania, laczenia) nie migaja
 		const TArray<FVector2D>& P = Odcinki[i].P;
-		Wstega(Siatki, i, P, true, 14.f + float(i % 6) * 1.5f, WchodziWDroge(i, P[0]), WchodziWDroge(i, P.Last()));
+		Wstega(Siatki, i, P, true, 14.f + float(i % 6) * 1.5f, WchodziWDroge(i, P[0]), WchodziWDroge(i, P.Last()), i);
 		if (Material)
 		{
 			Siatki->SetMaterial(i, Material);
 		}
 	}
+	// Laty ubitej ziemi nad wszystkimi wstegami: skrzyzowania, wjazdy, rozwidlenia.
+	TArray<FVector2D> J;
+	Skrzyzowania(J);
+	Laty(Siatki, Odcinki.Num(), J, Polszerokosc * 1.3f * 1.45f, 24.f);
 	PosadzKepki();
+	BudujSciezki();
+}
+
+void ADrogi::Skrzyzowania(TArray<FVector2D>& Out) const
+{
+	Out.Reset();
+	auto Dodaj = [&Out](FVector2D Q)
+	{
+		for (const FVector2D& J : Out)
+		{
+			if (FVector2D::DistSquared(J, Q) < 450.0 * 450.0)
+			{
+				return;
+			}
+		}
+		Out.Add(Q);
+	};
+	auto PrzyKoncu = [](const TArray<FVector2D>& P, FVector2D X)
+	{
+		return FVector2D::Distance(P[0], X) < 300.0 || FVector2D::Distance(P.Last(), X) < 300.0;
+	};
+	TArray<FBox2D> Ramki;
+	for (const FOdcinek& O : Odcinki)
+	{
+		Ramki.Add(FBox2D(O.P).ExpandBy(10.0));
+	}
+	for (int32 i = 0; i < Odcinki.Num(); ++i)
+	{
+		const TArray<FVector2D>& P = Odcinki[i].P;
+		if (P.Num() < 2)
+		{
+			continue;
+		}
+		for (const FVector2D& E : { P[0], P.Last() })
+		{
+			if (WchodziWDroge(i, E))
+			{
+				Dodaj(E);
+				continue;
+			}
+			int32 Ile = 0;
+			for (const FOdcinek& O : Odcinki)
+			{
+				if (O.P.Num() >= 2)
+				{
+					Ile += FVector2D::Distance(O.P[0], E) < 300.0 ? 1 : 0;
+					Ile += FVector2D::Distance(O.P.Last(), E) < 300.0 ? 1 : 0;
+				}
+			}
+			if (Ile >= 3)
+			{
+				Dodaj(E); // rozwidlenie z koncow
+			}
+		}
+		for (int32 j = i + 1; j < Odcinki.Num(); ++j)
+		{
+			const TArray<FVector2D>& Q = Odcinki[j].P;
+			if (Q.Num() < 2 || !Ramki[i].Intersect(Ramki[j]))
+			{
+				continue;
+			}
+			for (int32 a = 0; a + 1 < P.Num(); ++a)
+			{
+				for (int32 b = 0; b + 1 < Q.Num(); ++b)
+				{
+					FVector2D X;
+					// koniec w koniec (przedluzenie) to nie skrzyzowanie
+					if (Przeciecie(P[a], P[a + 1], Q[b], Q[b + 1], X) && !(PrzyKoncu(P, X) && PrzyKoncu(Q, X)))
+					{
+						Dodaj(X);
+					}
+				}
+			}
+		}
+	}
+}
+
+void ADrogi::Laty(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVector2D>& Gdzie, float R, float Nad) const
+{
+	FSiatkaDrogi M(GetActorLocation());
+	constexpr int32 Ile = 24;
+	const FLinearColor Brzeg(0.30f, 0.27f, 0.15f);
+	for (const FVector2D& E : Gdzie)
+	{
+		// lekko nieregularny obrys (los z polozenia), zeby lata nie byla idealnym kolem
+		const float Faza = float(GetTypeHash(FIntPoint(FMath::RoundToInt32(E.X / 50.0), FMath::RoundToInt32(E.Y / 50.0))) % 628) / 100.f;
+		const int32 S = M.Punkt(E, Nad, Ubita, 1.f);
+		for (int32 k = 0; k < Ile; ++k)
+		{
+			const double Kat = 2.0 * PI * k / Ile;
+			const FVector2D Kr(FMath::Cos(Kat), FMath::Sin(Kat));
+			const float Ri = R * (0.92f + 0.08f * FMath::Sin(float(Kat) * 3.f + Faza) + 0.05f * FMath::Sin(float(Kat) * 5.f + Faza * 2.f));
+			M.Punkt(E + Kr * (Ri * 0.7f), Nad, Ubita, 1.f);
+			M.Punkt(E + Kr * Ri, Nad, Brzeg, 0.f);
+		}
+		for (int32 k = 0; k < Ile; ++k)
+		{
+			const int32 A1 = S + 1 + 2 * k, A2 = A1 + 1;
+			const int32 B1 = S + 1 + 2 * ((k + 1) % Ile), B2 = B1 + 1;
+			M.T.Append({ S, B1, A1, A1, B1, A2, B1, B2, A2 });
+		}
+	}
+	M.Do(C, Sekcja, Material);
+}
+
+void ADrogi::Pasek(FSiatkaDrogi& M, const TArray<FVector2D>& P0, float Pol, float Nad) const
+{
+	if (P0.Num() < 2)
+	{
+		return;
+	}
+	TArray<FVector2D> P;
+	for (int32 i = 0; i + 1 < P0.Num(); ++i)
+	{
+		const FVector2D A = P0[FMath::Max(i - 1, 0)], B = P0[i], Cc = P0[i + 1], D = P0[FMath::Min(i + 2, P0.Num() - 1)];
+		P.Add(B);
+		P.Add((B + Cc) * 0.5625 - (A + D) * 0.0625);
+	}
+	P.Add(P0.Last());
+	// Wydeptana sciezka: jasniejsza ziemia, ciemniejszy srodek, brzegi w trawe.
+	const FLinearColor Brzeg(0.30f, 0.28f, 0.15f), Bok(0.36f, 0.29f, 0.18f), Srodek(0.32f, 0.25f, 0.155f);
+	constexpr int32 K = 5;
+	const float Off[K] = { -1.f, -0.45f, 0.f, 0.45f, 1.f };
+	const float Alfa[K] = { 0.f, 1.f, 1.f, 1.f, 0.f };
+	const FLinearColor Kolory[K] = { Brzeg, Bok, Srodek, Bok, Brzeg };
+	const int32 N = P.Num(), S = M.V.Num();
+	for (int32 i = 0; i < N; ++i)
+	{
+		const FVector2D D = (P[FMath::Min(i + 1, N - 1)] - P[FMath::Max(i - 1, 0)]).GetSafeNormal();
+		const FVector2D Nn(-D.Y, D.X);
+		// przy drzwiach wezej (wydeptane od progu), szerzej przy drodze
+		const float Wi = Pol * (0.75f + 0.25f * float(i) / float(N - 1));
+		for (int32 j = 0; j < K; ++j)
+		{
+			M.Punkt(P[i] + Nn * (Wi * Off[j]), Nad, Kolory[j], (i == 0 ? 0.6f : 1.f) * Alfa[j]);
+		}
+	}
+	for (int32 i = 0; i + 1 < N; ++i)
+	{
+		for (int32 j = 0; j + 1 < K; ++j)
+		{
+			const int32 A = S + i * K + j, B = A + 1, Cc = A + K, D = Cc + 1;
+			M.T.Append({ A, B, Cc, B, D, Cc });
+		}
+	}
+}
+
+void ADrogi::BudujSciezki()
+{
+	Sciezki->ClearAllMeshSections();
+	AOsada* O = Osada.Get();
+	if (!O || Wezly.Num() == 0)
+	{
+		return;
+	}
+	FSiatkaDrogi M(GetActorLocation());
+	for (const TWeakObjectPtr<ABudowa>& Wb : O->WszystkieBudynki())
+	{
+		const ABudowa* B = Wb.Get();
+		if (!B || B->Ruina())
+		{
+			continue;
+		}
+		const FRodzajBudynku& R = B->Rodzaj();
+		if (R.bUmocnienie || R.ZObszarem())
+		{
+			continue; // mury, pola i pastwiska bez sciezek
+		}
+		const FTransform Tr = B->GetActorTransform();
+		const FVector2D Przod = FVector2D(Tr.GetUnitAxis(EAxis::Y)).GetSafeNormal();
+		const FVector2D Lok = R.Wejscie.IsNearlyZero() ? FVector2D(0.f, R.Polowa.Y + 60.f) : R.Wejscie;
+		const FVector2D Drzwi = FVector2D(Tr.TransformPosition(FVector(Lok, 0.0)));
+		FVector2D Q, Kier;
+		float Odl = 0.f;
+		if (!NajblizszyPunkt(Drzwi, 3000.f, Q, Kier, Odl) || Odl < Polszerokosc * 1.15f)
+		{
+			continue; // daleko od drog albo drzwi przy samej drodze
+		}
+		const FVector2D DoD = (Q - Drzwi).GetSafeNormal();
+		const FVector2D Koniec = Q - DoD * (Polszerokosc * 0.5f); // pod skraj drogi (wstega drogi ja przykrywa)
+		const FVector2D Nn(-Kier.Y, Kier.X);
+		const FVector2D Kb = ((Koniec - Drzwi) | Nn) >= 0.0 ? Nn : -Nn; // wchodzi w droge prawie prostopadle
+		TArray<FVector2D> P;
+		Krzywa(Drzwi, (Przod | DoD) > -0.2 ? Przod : FVector2D::ZeroVector, Koniec, Kb, P);
+		bool bPrzez = false;
+		for (int32 k = 1; k + 1 < P.Num() && !bPrzez; ++k)
+		{
+			const ABudowa* Pod = O->BudynekPod(P[k]);
+			bPrzez = Pod && Pod != B;
+		}
+		if (bPrzez)
+		{
+			continue; // nie przez cudzy budynek
+		}
+		if (P.Num() == 2)
+		{
+			P.Insert((P[0] + P[1]) * 0.5, 1);
+		}
+		Pasek(M, P, 75.f, 11.f);
+	}
+	M.Do(Sciezki, 0, Material);
+}
+
+void ADrogi::SprawdzSciezki()
+{
+	AOsada* O = Osada.Get();
+	if (!O)
+	{
+		return;
+	}
+	uint32 H = GetTypeHash(Odcinki.Num());
+	for (const TWeakObjectPtr<ABudowa>& Wb : O->WszystkieBudynki())
+	{
+		if (const ABudowa* B = Wb.Get())
+		{
+			const FVector L = B->GetActorLocation();
+			H = HashCombine(H, PointerHash(B));
+			H = HashCombine(H, GetTypeHash(FIntPoint(FMath::RoundToInt32(L.X / 20.0), FMath::RoundToInt32(L.Y / 20.0))));
+			H = HashCombine(H, GetTypeHash(FMath::RoundToInt32(B->GetActorRotation().Yaw)) + (B->Ruina() ? 7u : 0u));
+		}
+	}
+	if (H != StanSciezek)
+	{
+		StanSciezek = H;
+		BudujSciezki();
+	}
 }
 
 float ADrogi::OdInnejDrogi(int32 Ktory, FVector2D Q, float Max) const

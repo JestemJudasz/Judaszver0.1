@@ -183,11 +183,27 @@ public:
 		int32 Woje = 0, Chlopi = 0;
 		bool bCzeka = false;  // doszla pod osade gracza, czeka na bitwe
 		float Czeka = 0.f;
+		int32 Id = 0;
+		// Przechwycenie (26.11.2026): wojsko gracza wyszlo naprzeciw; armia staje w Czas = StopCzas i czeka na bitwe w polu.
+		bool bPrzechwycona = false;
+		float StopCzas = 0.f, StopCzeka = 0.f;
 		FVector2D Gdzie() const { return FMath::Lerp(Skad, Dokad, FMath::Clamp(Czas / FMath::Max(1.f, Caly), 0.f, 1.f)); }
 	};
 	const TArray<FArmia>& Armie() const { return ArmieL; }
 	/** Sekundy gry marszu na odleglosc (cm): 6 s na km, 25..120 s. */
 	static float CzasMarszuArmii(float OdlCm) { return FMath::Clamp(OdlCm / 1.0e5f * 6.f, 25.f, 120.f); }
+	/** Wyjscie naprzeciw (prosba 26.11.2026: "wyslemy wojska na mapie papierowej na walke, aby wyprzedzic oblezenie"):
+	 *  powolane ruszenie idzie na spotkanie armii Id idacej na osade gracza; tylko w czasie wojny z tym rodem. Miejsce
+	 *  spotkania: tam, gdzie armia bedzie, gdy wojsko gracza dojdzie; armia tam staje, potem bitwa w polu (ABitwa). */
+	bool Przechwyc(int32 Id, FString& Powod);
+	/** Armia rodu R idaca na gracza, ktora mozna przechwycic (-1 = brak). */
+	int32 ArmiaNaGracza(int32 R) const;
+	/** Czy armia Id stoi i czeka na bitwe w polu. */
+	bool ArmiaCzekaNaBitwe(int32 Id) const;
+	/** Bitwa w polu skonczona: straty rodu; wygrana = armia rozbita, przegrana = idzie dalej na osade (mniejsza). */
+	void PoPrzechwyceniu(int32 Id, bool bWygrana, int32 Poleglo, float Skala);
+	/** Ludzie armii Id (do bitwy w polu). */
+	bool LudzieArmii(int32 Id, int32& Woje, int32& Chlopi) const;
 	/** Wojna z graczem: bWojna, ogloszenie i baner na srodku ekranu. bOdGracza = wy wypowiadacie (wyprawa). */
 	void Wypowiedz(int32 R, bool bWojna, const FString& Dlaczego, bool bOdGracza = false);
 	/** Pokoj za grosze (30 + 2 na rodzine); konczy wojne i zawraca armie idace na osade gracza. */
@@ -215,6 +231,7 @@ private:
 	void Wladca(int32 I);
 	void Bitwa(int32 A, int32 B);
 	TArray<FArmia> ArmieL;
+	int32 NastIdArmii = 0;
 	void ArmieTick(float Dt);
 	/** Napad rodu na gracza liczony z sily (bez bitwy: gracz nie patrzy na mape grywalna albo brak ABitwa). */
 	void NapadLiczbami(int32 I);

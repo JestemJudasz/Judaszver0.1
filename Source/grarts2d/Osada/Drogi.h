@@ -12,6 +12,9 @@
 // Wyglad: ProceduralMesh nad terenem, material M_Droga (Tools/drogi.py + Tools/Zbuduj_Drogi.bat): ziemia z koleinami,
 //   poszarpane pikselowe brzegi (maska z kanalu alfa wierzcholkow i szumu tekstury). Od 23.11.2026: dwie koleiny i pas
 //   trawy posrodku, falisty brzeg, kepki trawy i kamyki wzdluz brzegow (modele z Tools/ue_natura.py).
+// Laczenia (prosba 26.11.2026): przy innej drodze koleiny przechodza w jednolita ubita ziemie, na skrzyzowaniach i wjazdach
+//   lezy lata ubitej ziemi nad wszystkimi wstegami (bez nachodzacych kolein). Od drzwi budynkow do najblizszej drogi
+//   biegna waskie wydeptane sciezki (Sciezki, odswiezane co 2 s, gdy zmienia sie budynki albo drogi).
 #pragma once
 
 #include "CoreMinimal.h"
@@ -26,6 +29,7 @@ class ATerenKafle;
 class AOsada;
 class APlayerController;
 struct FRodzajBudynku;
+struct FSiatkaDrogi;
 
 UCLASS()
 class GRARTS2D_API ADrogi : public AActor
@@ -103,7 +107,19 @@ private:
 	void BudujSiatke();
 	/** Wstega drogi (i okragle konce) do sekcji siatki; Baza = polozenie aktora. Nad = cm nad terenem (rozne dla odcinkow,
 	 *  zeby nachodzace na siebie nie migaly), bWjazdA/B = koniec wchodzi w srodek innej drogi (wstega rozszerza sie lejkiem). */
-	void Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVector2D>& P, bool bKonce, float Nad = 14.f, bool bWjazdA = false, bool bWjazdB = false) const;
+	void Wstega(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVector2D>& P, bool bKonce, float Nad = 14.f, bool bWjazdA = false, bool bWjazdB = false, int32 Ktory = -1) const;
+	/** Miejsca skrzyzowan, wjazdow w srodek drogi i spotkan 3+ koncow (laty ubitej ziemi). */
+	void Skrzyzowania(TArray<FVector2D>& Out) const;
+	/** Okragla lata ubitej ziemi (W = promien) dopisana do V/T... sekcji Sekcja. */
+	void Laty(UProceduralMeshComponent* C, int32 Sekcja, const TArray<FVector2D>& Gdzie, float R, float Nad) const;
+	/** Waski pasek (sciezka): jednolity kolor, brzegi z alfa 0. */
+	void Pasek(FSiatkaDrogi& M, const TArray<FVector2D>& P, float Pol, float Nad) const;
+	/** Sciezki od drzwi budynkow do drog (od nowa). */
+	void BudujSciezki();
+	/** Co 2 s: czy zmienily sie budynki (hasz polozen) - wtedy BudujSciezki. */
+	void SprawdzSciezki();
+	FTimerHandle ZegarSciezek;
+	uint32 StanSciezek = 0;
 	/** Teren pod droga: lad, nie rzeka, lagodny stok, bez budynkow. */
 	bool MoznaDroge(const TArray<FVector2D>& P) const;
 	/** Koniec drogi przy kursorze, przyciagniety do drogi obok. Zwraca 0 = wolny punkt, 1 = koniec drogi (Kier = kierunek
@@ -124,6 +140,8 @@ private:
 	TObjectPtr<UProceduralMeshComponent> Siatki;
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UProceduralMeshComponent> Szkic;
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<UProceduralMeshComponent> Sciezki;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UInstancedStaticMeshComponent>> Kepki; // SM_Trawa_1, SM_Trawa_2, SM_Kamien_1
 	UPROPERTY(Transient)
