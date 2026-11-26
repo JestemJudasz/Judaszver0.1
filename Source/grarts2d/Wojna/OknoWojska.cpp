@@ -107,6 +107,12 @@ void SOknoWojska::Construct(const FArguments& InArgs)
 					{
 						if (ABitwa* B = Ja.Get()) { for (int32 m = 0; m < B->Milicje().Num(); ++m) { B->Rozwiaz(m); } }
 					})]
+					// Punkt zbiorki (26.11.2026, jak w Manor Lords): klik w teren wyznacza, gdzie biegna powolani.
+					+ SHorizontalBox::Slot().AutoWidth()[Guzik(TEXT("Punkt zbiórki"), TEXT("Kliknij miejsce na mapie: tam powołani biegną i się grupują (prawy klik - bez zmian)"), [this, Ja]()
+					{
+						if (ABitwa* B = Ja.Get()) { B->WybierzZbiorke(); }
+						NaZamknij.ExecuteIfBound();
+					})]
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 				[

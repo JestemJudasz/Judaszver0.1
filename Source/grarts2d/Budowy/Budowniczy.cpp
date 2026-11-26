@@ -2200,6 +2200,23 @@ void ABudowniczy::Tick(float DeltaSeconds)
 		UstawInfo();
 		UstawPomoc();
 	}
+	// Wybor punktu zbiorki ruszenia (okno Wojsko, "Punkt zbiórki"): klik w teren, prawy klik / Esc - bez zmian.
+	if (Bitwa && Bitwa->WybieraZbiorke())
+	{
+		if (PC->WasInputKeyJustPressed(EKeys::RightMouseButton) || PC->WasInputKeyJustPressed(EKeys::Escape) || !bRegion)
+		{
+			Bitwa->AnulujZbiorke();
+		}
+		else if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton))
+		{
+			FVector P;
+			if (TerenPodKursorem(PC, P))
+			{
+				Bitwa->UstawZbiorke(FVector2D(P));
+			}
+			return; // ten klik nie wybiera budynku
+		}
+	}
 	// Klik w choragiew armii idacej na was (w czasie wojny, obie mapy): wojsko wychodzi naprzeciw (26.11.2026).
 	if (Rody && !Wybrany && !(Drogi && Drogi->Rysuje()) && PC->WasInputKeyJustPressed(EKeys::LeftMouseButton))
 	{

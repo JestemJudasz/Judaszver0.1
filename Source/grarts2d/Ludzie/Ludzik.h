@@ -95,6 +95,8 @@ public:
 	/** Polegl od ciosu / strzaly lecacej w kierunku Kier: pada w te strone (prosto, na kolana i na twarz, z obrotem albo
 	 *  odrzucony do tylu). bKona = jeszcze kilka sekund rusza sie na ziemi. */
 	void WalkaPadnij(FVector2D Kier, bool bStrzala, bool bKona);
+	/** Zabity przez napastnikow w osadzie (26.11.2026: bez obrony napad pali i morduje): rzuca prace i pada. */
+	void ZabityWNapadzie(FVector2D Kier);
 	/** Trafiony, ale zyje: zachwianie od ciosu z kierunku Kier; strzala: zgina sie, lapie za rane, czasem przyklęka. */
 	void WalkaTrafiony(FVector2D Kier, bool bStrzala);
 	/** Cios nadchodzi i zostanie zatrzymany: tarcza (albo bron) w gore na chwile. */

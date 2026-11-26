@@ -96,6 +96,8 @@ struct FOddzial
 	bool bKoniec = false;     // po walce: schodzi z pola (bitwa probna, wrog)
 	bool bNapad = false;      // bandyci napadu: bez obrony ida plądrowac osade
 	bool bLup = false;        // bandyci juz zabrali lup i odchodza
+	// Pladrowanie (26.11.2026): w osadzie bez obrony chodza od budynku do budynku, pala i morduja, potem lup i odwrot.
+	float Pladruje = -1.f, DoMordu = 0.f, DoPozaru = 2.f;
 	FVector2D Skad = FVector2D::ZeroVector; // skad przyszli bandyci (tam odchodza z lupem)
 	// Szyk i marsz gracza (22.11.2026, przeciaganie prawym jak w Total War).
 	int32 KolGracza = 0;      // szerokosc wybrana przeciagnieciem (0 = sama z liczby ludzi); straty zmniejszaja glebokosc
@@ -225,6 +227,15 @@ public:
 	bool Przechwyc(int32 Rod, FVector2D Miejsce, int32 Armia, FString& Powod);
 	/** Rod, ktorego armie wasze wojsko idzie przechwycic albo z ktora walczy w polu (-1 = brak). */
 	int32 RodPrzechwycenia() const { return PoleRod; }
+	// --- Punkt zbiorki ruszenia (26.11.2026, jak w Manor Lords) ---
+	/** Nastepny klik w teren (ABudowniczy) ustawia punkt zbiorki. */
+	void WybierzZbiorke();
+	bool WybieraZbiorke() const { return bWybieraZbiorke; }
+	void AnulujZbiorke() { bWybieraZbiorke = false; }
+	/** Powolani biegna tu i staja w szyku (takze juz powolani, jesli nie walcza). */
+	void UstawZbiorke(FVector2D P);
+	bool MaZbiorke() const { return bZbiorka; }
+	FVector2D Zbiorka() const { return ZbiorkaP; }
 	/** Dokad idzie kolumna wyprawy albo przechwycenia (pod brame / miejsce spotkania). */
 	FVector2D CelMarszu() const { return MarszW.Wejscie + MarszW.Na * 6000.f; }
 	/** Ilu obroncow wystawi rod (woje + co trzecia rodzina, 6..60). */
@@ -264,6 +275,11 @@ private:
 	int32 NapadRoduI = -1;    // P6: rod, ktory napadl na osade gracza (bitwa trwa)
 	float SkalaNapadu = 1.f;  // ilu ludzi rodu na jednego na polu (duze armie sa pomniejszone)
 	void SzkolenieTick(float Dt);
+	/** Napastnicy w osadzie: od budynku do budynku, morduja ludzi w poblizu, podpalaja budynki (Pladruje s). */
+	void Pladrowanie(float Dt);
+	static constexpr float CzasPladrowania = 30.f;
+	int32 Zamordowani = 0;
+	bool bOglosilPladrowanie = false;
 	int32 BramaW = -1;        // brama do rozbicia (indeks w AOsadaRodu::Bramy)
 	bool bZdobyta = false;
 	FVector2D Dom = FVector2D::ZeroVector; // oboz gracza (tu wracaja woje wyprawy)
@@ -296,6 +312,8 @@ private:
 	/** Przechwycenie doszlo: oddzialy gracza i armia rodu naprzeciw siebie w polu. */
 	void DotarliPole();
 	int32 PoleRod = -1, PoleArmia = -1;
+	FVector2D ZbiorkaP = FVector2D::ZeroVector;
+	bool bZbiorka = false, bWybieraZbiorke = false;
 	void UkryjMarsz(bool bUkryj);
 	// Palenie (24.11.2026, prosba: "zaznaczyc spal ten budynek", "po wyborze Spalic jednostki biegaja, morduja, pala"):
 	// oddzial -> dzialka osady rodu do podpalenia (prawy klik w budynek), -1 = pali, co popadnie (po wyborze Spalic).

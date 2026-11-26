@@ -2052,6 +2052,16 @@ bool ALudzik::MaTarcze() const
 	return TarczaC && TarczaC->GetAttachParent() == PrzedL;
 }
 
+void ALudzik::ZabityWNapadzie(FVector2D Kier)
+{
+	if (Budowa.IsValid())
+	{
+		KoniecPracy(false);
+	}
+	bWalka = true; // osada nie daje mu juz pracy (jak polegly z ruszenia)
+	WalkaPadnij(Kier, false, FMath::FRand() < 0.3f);
+}
+
 void ALudzik::WalkaPadnij(FVector2D Kier, bool bStrzala, bool bKona)
 {
 	Stan = EStan::Lezy;

@@ -1029,3 +1029,10 @@ Prośba: „łączenie i tekstury”, ścieżki do domków jak w Manor Lords, dr
 
 ## Poprawka: czerwony podgląd przy przyciąganiu do drogi (26.11.2026, wieczór)
 Zgłoszenie: dom przyciągnięty do drogi był zawsze czerwony. Przyczyna: od rana kolizja z drogą liczy obrys budynku po pełnym ulepszeniu (`NajwyzszyPoziom`), a `ADrogi::Przyciagnij` odsuwał budynek tylko o głębokość obecnego poziomu, więc większy obrys wchodził na drogę. Teraz odsunięcie bierze większą z dwóch wartości: `Polowa.Y` albo przód obrysu najwyższego poziomu (`ABudowniczy::Stawianie` i automatyczne stawianie przy drodze). Mały dom stoi więc kawałek od drogi, z miejscem na ulepszenie.
+
+## Ruszenie i napady jak w Manor Lords (26.11.2026, wieczór)
+Uwagi z gry: punkt zbiórki ruszenia do wyboru, a wojsko ma tam biec; wroga armia pojawia się obok osady zamiast maszerować; gdy gracz nie ma wojska, napastnicy mają atakować budynki i zabijać ludzi.
+- Punkt zbiórki: w oknie Wojsko (J) przycisk „Punkt zbiórki”, potem klik w teren (prawy klik albo Esc anuluje; obsługa w `ABudowniczy::Tick`). `ABitwa::WybierzZbiorke`, `UstawZbiorke`, `MiejsceZbiorki` (oddziały obok siebie, frontem od osady). Już powołani, którzy nie walczą, biegną na nowe miejsce. Chorągiew „Zbiórka ruszenia” rysuje `SZnakiArmii`. W `DoSzyku` wój dalej niż 7 m od miejsca w szyku biegnie (`Bieg`), więc powołani biegną z pracy.
+- Marsz zamiast pojawiania się: bandyci (`ZacznijNapad`) i napad rodu (`NapadRodu`) zaczynają około 150 m od obozu i od razu ruszają.
+- Plądrowanie: napastnicy po wejściu do osady (15 m od obozu) przez 30 s (`CzasPladrowania`) chodzą od budynku do budynku (`ABitwa::Pladrowanie`). Co około sekundę jeden z nich zabija mieszkańca w promieniu 8 m (`ALudzik::ZabityWNapadzie`), a co 6–10 s podpalają budynek przy sobie. Potem łup (`Grabiez`) i odwrót. Obrońcy w promieniu 70 m ściągają ich do walki. Liczba zamordowanych trafia do ogłoszenia na koniec.
+- Kompilacja i 16 testów zielone, w grze nieoglądane.

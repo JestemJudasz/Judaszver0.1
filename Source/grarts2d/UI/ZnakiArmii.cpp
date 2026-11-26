@@ -145,6 +145,18 @@ int32 SZnakiArmii::OnPaint(const FPaintArgs& Args, const FGeometry& G, const FSl
 				FString::Printf(TEXT("%s%s · %d%% drogi"), bPowrot ? TEXT("z ") : TEXT("na "), *Cel, FMath::RoundToInt32(Postep * 100.f)), StylUI::Zloto);
 		}
 	}
+	// Punkt zbiorki ruszenia (mapa grywalna).
+	if (bRegion)
+	{
+		for (TActorIterator<ABitwa> It(W); It; ++It)
+		{
+			FVector2f E;
+			if (It->MaZbiorke() && Rzut(It->Zbiorka(), E))
+			{
+				FHerb::Gracza().Choragiew(Out, L + 2, G, E, 16.f, TEXT("Zbiórka ruszenia"), FString(), StylUI::Zloto);
+			}
+		}
+	}
 	// Baner wojny / pokoju: duzy napis u gory ekranu, znika po kilku sekundach.
 	const double Teraz = W->GetRealTimeSeconds();
 	if (!A->Baner.IsEmpty() && Teraz < A->BanerDo)

@@ -881,14 +881,15 @@ bool ABitwa::ZacznijNapad()
 			return false; // juz sa wrogowie na polu
 		}
 	}
-	// Bandyci nadchodza z losowej strony z ok. 60 m (z ladu), chwile sie zbieraja: jest czas powolac ruszenie.
+	// Bandyci nadchodza marszem z losowej strony, z ok. 150 m (z ladu): widac ich z daleka, jest czas powolac ruszenie.
+	const float Dojscie = 15000.f;
 	const FVector2D C = Wies->Oboz();
 	FVector2D Kier(1.f, 0.f);
 	for (int32 Proba = 0; Proba < 16; ++Proba)
 	{
 		const float Kat = FMath::FRandRange(0.f, 2.f * PI);
 		Kier = FVector2D(FMath::Cos(Kat), FMath::Sin(Kat));
-		const FVector2D P = C + Kier * 6000.f;
+		const FVector2D P = C + Kier * Dojscie;
 		if (FSwiat::Woda(P.X, P.Y) == FSwiat::EWoda::Lad && FSwiat::OdRzeki(P.X, P.Y) > 600.f)
 		{
 			break;
@@ -900,6 +901,8 @@ bool ABitwa::ZacznijNapad()
 		Przygotuj(C);
 	}
 	CelNapadu = C;
+	Zamordowani = 0;
+	bOglosilPladrowanie = false;
 	Lup = FSurowce();
 	LupGroszy = 0;
 	bLupUciekl = false;
@@ -910,11 +913,11 @@ bool ABitwa::ZacznijNapad()
 	for (int32 g = 0; g < NGrupB; ++g)
 	{
 		const int32 Ile = NBand / NGrupB + (g < NBand % NGrupB ? 1 : 0);
-		const FVector2D Gdzie = C + Kier * 6000.f + Prawo * ((g - (NGrupB - 1) * 0.5f) * 1500.f);
+		const FVector2D Gdzie = C + Kier * Dojscie + Prawo * ((g - (NGrupB - 1) * 0.5f) * 1500.f);
 		const int32 i = DodajOddzial(ERodzajWojska::Bandyci, NazwyB[g % 5], 1, Ile, Gdzie, -Kier, 0, FLinearColor(0.24f + 0.03f * g, 0.23f, 0.17f));
 		Oddz[i].bNapad = true;
 		Oddz[i].Skad = Gdzie + Kier * 2500.f;
-		Oddz[i].Start = CzasBitwy + 10.f;
+		Oddz[i].Start = CzasBitwy - 2.f; // 26.11.2026: od razu ruszaja marszem z daleka (nie pojawiaja sie pod osada)
 	}
 	Rozpocznij();
 	Wies->Ogloszenie(FString::Printf(TEXT("Napad! %d bandytów nadchodzi. Powołaj pospolite ruszenie: Wojsko (J)."), NBand));
@@ -1022,9 +1025,11 @@ void ABitwa::UsunMilicje(int32 m)
 FVector2D ABitwa::MiejsceZbiorki(int32 m, FVector2D& Front)
 {
 	// Przed obozem, od strony najblizszych bandytow (bez nich: na wschod); kolejne oddzialy obok siebie.
+	// Punkt zbiorki gracza (26.11.2026): tam, frontem od osady (albo do wroga).
 	AOsada* Wies = Osada();
-	const FVector2D C = Wies ? Wies->Oboz() : FVector2D(GetActorLocation());
-	Front = FVector2D(1.f, 0.f);
+	const FVector2D Oboz = Wies ? Wies->Oboz() : FVector2D(GetActorLocation());
+	const FVector2D C = bZbiorka ? ZbiorkaP : Oboz;
+	Front = bZbiorka && Dl(ZbiorkaP, Oboz) > 300.f ? (ZbiorkaP - Oboz).GetSafeNormal() : FVector2D(1.f, 0.f);
 	float NajD = TNumericLimits<float>::Max();
 	for (const FOddzial& E : Oddz)
 	{
@@ -1044,7 +1049,41 @@ FVector2D ABitwa::MiejsceZbiorki(int32 m, FVector2D& Front)
 		}
 	}
 	const FVector2D Prawo(-Front.Y, Front.X);
-	return C + Front * 1600.f + Prawo * ((k - (n - 1) * 0.5f) * 1300.f);
+	return C + Front * (bZbiorka ? 0.f : 1600.f) + Prawo * ((k - (n - 1) * 0.5f) * 1300.f);
+}
+
+void ABitwa::WybierzZbiorke()
+{
+	bWybieraZbiorke = true;
+	if (AOsada* Wies = Osada()) { Wies->Ogloszenie(TEXT("Kliknij miejsce zbiórki ruszenia (prawy klik / Esc - bez zmian)")); }
+}
+
+void ABitwa::UstawZbiorke(FVector2D P)
+{
+	bWybieraZbiorke = false;
+	bZbiorka = true;
+	ZbiorkaP = P;
+	// Juz powolani, ktorzy nie walcza i nie sa w drodze: biegiem na nowe miejsce.
+	for (int32 m = 0; m < Mil.Num(); ++m)
+	{
+		if (!Mil[m].Powolana() || !Oddz.IsValidIndex(Mil[m].Oddzial) || MarszW.Oddzialy.Contains(Mil[m].Oddzial))
+		{
+			continue;
+		}
+		FOddzial& O = Oddz[Mil[m].Oddzial];
+		if (!O.Stoi() || O.bWalczy || O.Rozkaz == ERozkaz::Atakuj)
+		{
+			continue;
+		}
+		FVector2D Front;
+		O.CelRuchu = MiejsceZbiorki(m, Front);
+		O.FrontCelu = Front;
+		O.Rozkaz = ERozkaz::Idz;
+		O.bDoFrontu = true;
+		O.bBiegiem = true;
+		O.Trasa.Reset();
+	}
+	if (AOsada* Wies = Osada()) { Wies->Ogloszenie(TEXT("Punkt zbiórki ustawiony: powołani biegną tam")); }
 }
 
 void ABitwa::Powolaj(int32 m)
@@ -1155,6 +1194,119 @@ void ABitwa::Rozwiaz(int32 m, bool bOglos)
 	}
 	SprawdzKoniec();
 	Odswiez();
+}
+
+void ABitwa::Pladrowanie(float Dt)
+{
+	AOsada* Wies = Osada();
+	if (!Wies)
+	{
+		return;
+	}
+	for (int32 i = 0; i < Oddz.Num(); ++i)
+	{
+		FOddzial& O = Oddz[i];
+		if (O.Strona != 1 || !O.bNapad || O.bLup || O.Pladruje < 0.f || !O.Stoi())
+		{
+			continue;
+		}
+		O.Pladruje += Dt;
+		if (O.Rozkaz == ERozkaz::Atakuj)
+		{
+			continue; // bija sie z obroncami
+		}
+		// Od budynku do budynku w osadzie (losowo, z hasza: rozne grupy w rozne strony).
+		if (O.Rozkaz != ERozkaz::Idz || Dl(O.Srodek, O.CelRuchu) < 500.f)
+		{
+			TArray<FVector2D> Bud;
+			for (const TWeakObjectPtr<ABudowa>& Wb : Wies->WszystkieBudynki())
+			{
+				const ABudowa* B = Wb.Get();
+				if (B && !B->Ruina() && !B->Rodzaj().bUmocnienie && Dl(FVector2D(B->GetActorLocation()), CelNapadu) < 7000.f)
+				{
+					Bud.Add(FVector2D(B->GetActorLocation()) + FVector2D(B->GetActorRightVector()) * (B->Rodzaj().Polowa.Y + 250.f));
+				}
+			}
+			if (Bud.Num() > 0)
+			{
+				O.Rozkaz = ERozkaz::Idz;
+				O.CelRuchu = Bud[FMath::RandRange(0, Bud.Num() - 1)];
+				O.Front = (O.CelRuchu - O.Srodek).GetSafeNormal();
+				O.Trasa.Reset();
+			}
+		}
+		// Morduja ludzi w poblizu: co chwile jeden zboj dopada najblizszego mieszkanca (do 8 m).
+		O.DoMordu -= Dt;
+		if (O.DoMordu <= 0.f)
+		{
+			O.DoMordu = FMath::FRandRange(0.6f, 1.2f);
+			bool bZabil = false;
+			for (FWojownik& W : O.Ludzie)
+			{
+				if (bZabil || !Zywy(W) || W.Wrog >= 0 || W.L->Uderza())
+				{
+					continue;
+				}
+				const FVector2D PW = Poz(W);
+				ALudzik* Ofiara = nullptr;
+				float Naj = 800.f;
+				for (TActorIterator<ALudzik> It(GetWorld()); It; ++It)
+				{
+					ALudzik* L = *It;
+					if (L->WBitwie() || L->Lezy() || L->IsHidden())
+					{
+						continue;
+					}
+					const float D = Dl(FVector2D(L->GetActorLocation()), PW);
+					if (D < Naj)
+					{
+						Naj = D;
+						Ofiara = L;
+					}
+				}
+				if (Ofiara)
+				{
+					const FVector2D PO(Ofiara->GetActorLocation());
+					W.L->WalkaCios(PO);
+					Ofiara->ZabityWNapadzie((PO - PW).GetSafeNormal());
+					UDzwieki::Graj(this, "Smierc", Ofiara->GetActorLocation() + FVector(0.f, 0.f, 150.f), EDzwiek::Glosy);
+					if (bKrew)
+					{
+						Plama(PO + (PO - PW).GetSafeNormal() * 70.f, FMath::FRandRange(0.8f, 1.3f));
+					}
+					++Zamordowani;
+					bZabil = true;
+				}
+			}
+		}
+		// Podpalaja budynek przy sobie co kilka sekund (ogien sam przeskakuje dalej).
+		O.DoPozaru -= Dt;
+		if (O.DoPozaru <= 0.f)
+		{
+			O.DoPozaru = FMath::FRandRange(6.f, 10.f);
+			ABudowa* Cel = nullptr;
+			float Naj = 1800.f;
+			for (const TWeakObjectPtr<ABudowa>& Wb : Wies->WszystkieBudynki())
+			{
+				ABudowa* B = Wb.Get();
+				if (!B || !B->Zniszczalny() || B->Rodzaj().bUmocnienie || B->Ruina() || B->Zgliszcza() || B->Ogien() > 0.f)
+				{
+					continue;
+				}
+				const float D = Dl(FVector2D(B->GetActorLocation()), O.Srodek);
+				if (D < Naj)
+				{
+					Naj = D;
+					Cel = B;
+				}
+			}
+			if (Cel)
+			{
+				Cel->Podpal(FMath::FRandRange(0.25f, 0.4f));
+				UE_LOG(LogTemp, Log, TEXT("Bitwa: %s podpalaja budynek %s"), *O.Nazwa, *Cel->Rodzaj().Nazwa);
+			}
+		}
+	}
 }
 
 void ABitwa::Grabiez(FOddzial& O)
@@ -1342,9 +1494,12 @@ void ABitwa::DoSzyku(FOddzial& O, float Szybkosc)
 		{
 			continue; // w zwarciu: prowadzi go Zwarcie()
 		}
-		if (Dl(Poz(W), M) > (bNapor ? 30.f : 45.f))
+		const float DoMiejsca = Dl(Poz(W), M);
+		if (DoMiejsca > (bNapor ? 30.f : 45.f))
 		{
-			W.L->WalkaIdz(M, (Szybkosc + 60.f) * (W.Zdrowie < O.Zdrowie ? 0.85f : 1.f)); // ranny kuleje
+			// daleko od szyku (powolany z pracy, zbiorka): biegnie (26.11.2026, "wojska powinny biec szybko")
+			const float Sz = DoMiejsca > 700.f ? FMath::Max(Szybkosc + 60.f, Bieg) : Szybkosc + 60.f;
+			W.L->WalkaIdz(M, Sz * (W.Zdrowie < O.Zdrowie ? 0.85f : 1.f)); // ranny kuleje
 		}
 		else
 		{
@@ -1464,7 +1619,24 @@ void ABitwa::RuchOddzialow(float Dt)
 			else if (O.bNapad)
 			{
 				const FVector2D Dokad = O.bLup ? O.Skad : CelNapadu;
-				if (Dl(O.Srodek, Dokad) < 450.f)
+				if (!O.bLup && O.Pladruje >= 0.f)
+				{
+					// w osadzie: prowadzi Pladrowanie(); po czasie biora lup i odchodza
+					if (O.Pladruje > CzasPladrowania)
+					{
+						Grabiez(O);
+					}
+				}
+				else if (Dl(O.Srodek, Dokad) < 1500.f && !O.bLup)
+				{
+					O.Pladruje = 0.f;
+					if (!bOglosilPladrowanie)
+					{
+						bOglosilPladrowanie = true;
+						if (AOsada* Wies = Osada()) { Wies->Ogloszenie(FString::Printf(TEXT("%s wdarli się do osady: palą domy i mordują ludzi! Powołaj ruszenie (J)!"), *O.Nazwa)); }
+					}
+				}
+				else if (Dl(O.Srodek, Dokad) < 450.f)
 				{
 					if (!O.bLup)
 					{
@@ -2497,6 +2669,12 @@ void ABitwa::SprawdzKoniec()
 			NapadRoduI = -1;
 		}
 		T += FString::Printf(TEXT(" (polegli: twoi %d, wrogowie %d)"), Pol[0], Pol[1]);
+		if (Zamordowani > 0)
+		{
+			T += FString::Printf(TEXT(", zamordowanych mieszkańców: %d"), Zamordowani);
+			Zamordowani = 0;
+		}
+		bOglosilPladrowanie = false;
 		if (RodW >= 0 && Zwyciezca == 0)
 		{
 			bZdobyta = true; // panel wyboru (ZrobInterfejs)
@@ -2562,6 +2740,7 @@ void ABitwa::Symuluj(float Dt)
 		{
 			Oblezenie(Dt);
 		}
+		Pladrowanie(Dt);
 		Zwarcie(Dt);
 		Strzelanie(Dt);
 		Nacisk(Dt);
@@ -4240,13 +4419,15 @@ bool ABitwa::NapadRodu(int32 RI, int32 Woje, int32 Chlopi, FVector2D SkadRodu)
 	for (int32 Proba = 0; Proba < 12; ++Proba)
 	{
 		Kier = Baza.GetRotated((Proba % 2 ? 1.f : -1.f) * (Proba / 2) * 15.f);
-		const FVector2D P = C + Kier * 6000.f;
+		const FVector2D P = C + Kier * 15000.f;
 		if (FSwiat::Woda(P.X, P.Y) == FSwiat::EWoda::Lad && FSwiat::OdRzeki(P.X, P.Y) > 600.f)
 		{
 			break;
 		}
 	}
 	const FVector2D Prawo(-Kier.Y, Kier.X);
+	Zamordowani = 0;
+	bOglosilPladrowanie = false;
 	SkalaNapadu = FMath::Max(1.f, (Woje + Chlopi) / 60.f);
 	const int32 NW = FMath::RoundToInt32(Woje / SkalaNapadu);
 	const int32 NC = FMath::Max(Woje > 0 ? 0 : 6, FMath::RoundToInt32(Chlopi / SkalaNapadu));
@@ -4277,14 +4458,15 @@ bool ABitwa::NapadRodu(int32 RI, int32 Woje, int32 Chlopi, FVector2D SkadRodu)
 	{
 		const FGrupa& Gr = Grupy[g];
 		const bool bStrzelcy = RodzajWojska(Gr.Rd).Strzela();
-		const float Glebia = bStrzelcy ? 7600.f : (Gr.Rd == ERodzajWojska::Chlopi ? 6900.f : 6000.f);
+		// 26.11.2026 ("armia wroga teleportuje sie a nie maszeruje"): wchodza marszem z ok. 150 m, od razu ruszaja.
+		const float Glebia = 15000.f + (bStrzelcy ? 1600.f : (Gr.Rd == ERodzajWojska::Chlopi ? 900.f : 0.f));
 		const FVector2D Gdzie = C + Kier * Glebia + Prawo * ((g - (Grupy.Num() - 1) * 0.5f) * 1400.f);
 		const FLinearColor Tun = FMath::Lerp(RodzajWojska(Gr.Rd).Tunika, R.Barwa, 0.55f);
 		const int32 i = DodajOddzial(Gr.Rd, FString::Printf(TEXT("%s: %s"), *R.Nazwa, RodzajWojska(Gr.Rd).Nazwa), 1, Gr.Ilu, Gdzie, -Kier, Gr.Dosw, Tun);
 		Oddz[i].Barwa = R.Barwa;
 		Oddz[i].bNapad = true;
 		Oddz[i].Skad = Gdzie + Kier * 2500.f;
-		Oddz[i].Start = CzasBitwy + 15.f;
+		Oddz[i].Start = CzasBitwy - 2.f;
 	}
 	NapadRoduI = RI;
 	Rozpocznij();
