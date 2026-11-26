@@ -74,6 +74,8 @@ private:
 	void UsunPodgladLinii();
 	TArray<TWeakObjectPtr<ABudowa>> PodgladLinii;
 	bool bLiniaTrwa = false;
+	/** Odcinki muru pod stawiana brama (rozbierane przy postawieniu, 26.11.2026). */
+	TArray<TWeakObjectPtr<class ABudowa>> MurPodBrama;
 	FVector2D LiniaA = FVector2D::ZeroVector;
 	/** Panel nad paskiem budowy: Zbuduj -> stawia Szkic. */
 	void ZbudujSzkic();
@@ -175,6 +177,7 @@ private:
 	bool bTrybPokazu = false;   // -kosciol: bez obozu
 	bool bInterfejs = true;     // -zrzut bez -osada: czysty obraz
 	float DoInfo = 0.f;
+	float DoAutozapisu = 300.f; // FZapisGry::CoIleAutozapis
 
 	TSharedPtr<SWidget> Nakladka;
 	TSharedPtr<STextBlock> Pomoc;

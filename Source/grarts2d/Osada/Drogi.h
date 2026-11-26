@@ -31,6 +31,7 @@ UCLASS()
 class GRARTS2D_API ADrogi : public AActor
 {
 	GENERATED_BODY()
+	friend struct FZapisGry;
 
 public:
 	ADrogi();

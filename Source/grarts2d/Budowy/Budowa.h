@@ -228,6 +228,7 @@ UCLASS()
 class GRARTS2D_API ABudowa : public AActor
 {
 	GENERATED_BODY()
+	friend struct FZapisGry;
 
 public:
 	ABudowa();

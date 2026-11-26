@@ -33,6 +33,9 @@ public:
 private:
 	void PokazGlowne();
 	void PokazUstawienia(int32 Zakladka);
+	/** Zapis gry (P4): lista slotow do zapisu (bZapis) albo wczytania. */
+	void PokazSloty(bool bZapis);
+	FString StatusSlotow;
 	TSharedRef<SWidget> Grafika();
 	TSharedRef<SWidget> Dzwiek();
 	TSharedRef<SWidget> Sterowanie();

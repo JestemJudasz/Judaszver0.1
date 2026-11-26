@@ -41,6 +41,7 @@ UCLASS()
 class GRARTS2D_API AOsada : public AActor
 {
 	GENERATED_BODY()
+	friend struct FZapisGry; // Gra/ZapisGry: zapis i wczytanie stanu
 
 public:
 	AOsada();
@@ -182,6 +183,8 @@ public:
 	// --- Rodziny w budynkach pracy (okno budynku) ---
 	/** Dodaje najblizsza rodzine bez pracy; false = brak wolnych rodzin albo miejsc. */
 	bool DodajRodzine(ABudowa* B, bool bNaMiejscu = false);
+	/** Zapis gry: rodzina o indeksie I pracuje w B (bez szukania najblizszej). */
+	void UstawPrace(int32 I, ABudowa* B);
 	/** Zabiera ostatnio dodana rodzine (wraca pod dom i znow buduje). */
 	bool UsunRodzine(ABudowa* B);
 	int32 WolnychRodzin() const;

@@ -2,6 +2,7 @@
 #include "UI/MenuGlowne.h"
 #include "UI/Ustawienia.h"
 #include "UI/StylUI.h"
+#include "Gra/ZapisGry.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -176,7 +177,8 @@ void SMenuGlowne::PokazGlowne()
 					SNew(STextBlock).Text(FText::FromString(bStart ? TEXT("Osady, rody i wojny") : TEXT("Pauza"))).Font(Czcionka(12)).ColorAndOpacity(StylUI::Szary)
 				]
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(bStart ? TEXT("Nowa gra") : TEXT("Kontynuuj"), []() { Zamknij(); })]
-				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Wczytaj grę"), []() {}, false, TEXT("Zapis gry jeszcze nie istnieje"))]
+				+ SVerticalBox::Slot().AutoHeight()[bStart ? SNullWidget::NullWidget : TSharedRef<SWidget>(Przycisk(TEXT("Zapisz grę"), [this]() { StatusSlotow.Empty(); PokazSloty(true); }))]
+				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Wczytaj grę"), [this]() { StatusSlotow.Empty(); PokazSloty(false); }, FZapisGry::JakisZapis(), TEXT("Brak zapisów"))]
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Ustawienia"), [this]() { PokazUstawienia(0); })]
 				+ SVerticalBox::Slot().AutoHeight()[Przycisk(TEXT("Wyjście"), [W]()
 				{
@@ -185,6 +187,81 @@ void SMenuGlowne::PokazGlowne()
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
 				[
 					SNew(STextBlock).Text(FText::FromString(bStart ? TEXT("") : TEXT("Esc / F10 — wróć do gry"))).Font(Czcionka(9)).ColorAndOpacity(StylUI::Szary)
+				]
+			]
+		]);
+}
+
+void SMenuGlowne::PokazSloty(bool bZapis)
+{
+	// P4 (26.11.2026): 3 sloty gracza i autozapis (tylko do wczytania). Esc / Wroc - ekran glowny.
+	Zakladka = 10;
+	CzekaNa = NAME_None;
+	static FSlateRoundedBoxBrush Tlo(StylUI::Tlo, 6.f, StylUI::Ramka, 1.f);
+	TWeakObjectPtr<UWorld> W = GSwiat;
+	TSharedRef<SVerticalBox> Lista = SNew(SVerticalBox);
+	for (int32 s = bZapis ? 1 : 0; s <= FZapisGry::Slotow; ++s)
+	{
+		const FString Op = FZapisGry::Opis(s);
+		const FString Nazwa = s == 0 ? TEXT("Autozapis") : FString::Printf(TEXT("Zapis %d"), s);
+		const bool bAkt = bZapis || !Op.IsEmpty();
+		Lista->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
+		[
+			SNew(SBox).WidthOverride(460.f).HeightOverride(62.f)
+			[
+				SNew(SButton).ButtonStyle(&Styl).IsEnabled(bAkt)
+				.ToolTipText(FText::FromString(bZapis ? (Op.IsEmpty() ? TEXT("Zapisz w pustym slocie") : TEXT("Nadpisz ten zapis")) : TEXT("Wczytaj ten zapis")))
+				.OnClicked_Lambda([this, s, bZapis, W]()
+				{
+					FString Blad;
+					if (bZapis)
+					{
+						StatusSlotow = FZapisGry::Zapisz(W.Get(), s, Blad) ? FString::Printf(TEXT("Zapisano w slocie %d."), s) : Blad;
+						PokazSloty(true);
+					}
+					else if (FZapisGry::Wczytaj(W.Get(), s, Blad))
+					{
+						StatusSlotow = TEXT("Wczytywanie...");
+					}
+					else
+					{
+						StatusSlotow = Blad;
+						PokazSloty(false);
+					}
+					return FReply::Handled();
+				})
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(STextBlock).Text(FText::FromString(Nazwa)).Font(Czcionka(13, true)).ColorAndOpacity(bAkt ? StylUI::Zloto : StylUI::Szary)
+					]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(STextBlock).Text(FText::FromString(Op.IsEmpty() ? TEXT("pusty") : Op)).Font(Czcionka(10)).ColorAndOpacity(StylUI::Szary)
+					]
+				]
+			]
+		];
+	}
+	Miejsce->SetContent(
+		SNew(SBox).HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(FMargin(90.f, 0.f, 0.f, 0.f))
+		[
+			SNew(SBorder).BorderImage(&Tlo).Padding(FMargin(28.f, 24.f))
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 14.f)
+				[
+					SNew(STextBlock).Text(FText::FromString(bZapis ? TEXT("ZAPISZ GRĘ") : TEXT("WCZYTAJ GRĘ"))).Font(Czcionka(18, true)).ColorAndOpacity(StylUI::Zloto)
+				]
+				+ SVerticalBox::Slot().AutoHeight()[Lista]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 10.f)
+				[
+					SNew(STextBlock).Text(FText::FromString(StatusSlotow)).Font(Czcionka(10)).ColorAndOpacity(StylUI::Napis).AutoWrapText(true)
+				]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
+				[
+					SNew(SBox).WidthOverride(160.f)[Guzik(TEXT("Wróć"), [this]() { PokazGlowne(); })]
 				]
 			]
 		]);

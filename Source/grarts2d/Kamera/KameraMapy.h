@@ -17,6 +17,7 @@ UCLASS()
 class GRARTS2D_API AKameraMapy : public APawn
 {
 	GENERATED_BODY()
+	friend struct FZapisGry;
 
 public:
 	AKameraMapy();

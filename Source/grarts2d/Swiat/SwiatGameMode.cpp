@@ -26,6 +26,7 @@
 #include "Engine/World.h"
 #include "Misc/CommandLine.h"
 #include "TimerManager.h"
+#include "Gra/ZapisGry.h"
 
 ASwiatGameMode::ASwiatGameMode()
 {
@@ -112,12 +113,26 @@ void ASwiatGameMode::StartPlay()
 	PokazEkranLadowania();
 	// Ustawienia gracza (grafika, klawisze, dzwiek, kamera) i menu startowe; -zrzut bez menu, chyba ze z -menu.
 	FUstawienia::Wczytaj();
-	if (!FParse::Param(FCommandLine::Get(), TEXT("zrzut")) || FParse::Param(FCommandLine::Get(), TEXT("menu")))
+	// Zapis gry (P4): po "Wczytaj" poziom startuje od nowa z czekajacym slotem; -wczytaj=N wczytuje slot z linii polecen.
+	static bool bLiniaWczytana = false; // statyczne: przezywa przeladowanie poziomu
+	int32 SlotLinii = -1;
+	if (FParse::Value(FCommandLine::Get(), TEXT("wczytaj="), SlotLinii) && SlotLinii >= 0 && !bLiniaWczytana)
+	{
+		bLiniaWczytana = true;
+		FZapisGry::DoWczytania = SlotLinii;
+	}
+	FVector2D Zapisane;
+	const bool bWczytuje = FZapisGry::KameraStartu(Zapisane);
+	if (!bWczytuje && (!FParse::Param(FCommandLine::Get(), TEXT("zrzut")) || FParse::Param(FCommandLine::Get(), TEXT("menu"))))
 	{
 		SMenuGlowne::Otworz(W, true);
 	}
+	if (bWczytuje)
+	{
+		WejdzDoRegionu(Zapisane);
+	}
 	// -region: start od razu w mapie grywalnej wokol punktu startu (zrzuty kontrolne: -zrzut -region).
-	if (FParse::Param(FCommandLine::Get(), TEXT("region")))
+	else if (FParse::Param(FCommandLine::Get(), TEXT("region")))
 	{
 		WejdzDoRegionu(FSwiat::Start());
 	}

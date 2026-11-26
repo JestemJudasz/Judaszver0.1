@@ -94,6 +94,7 @@ UCLASS()
 class GRARTS2D_API ARody : public AActor
 {
 	GENERATED_BODY()
+	friend struct FZapisGry;
 
 public:
 	ARody();

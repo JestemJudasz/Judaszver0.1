@@ -37,6 +37,7 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Gra/ZapisGry.h"
 
 // Plynne pojawienie sie okna (22.11.2026): 0,15 s od przezroczystego, zamiast nagle.
 static void PokazPlynnie(const TSharedPtr<SBox>& Miejsce, TSharedRef<SWidget> Zawartosc)
@@ -1331,6 +1332,88 @@ void ABudowniczy::WyborObozu(APlayerController* PC)
 	}
 }
 
+// Mury, wieze i bramy laczone same (26.11.2026, prosba: "brama i mury powinno dac sie laczyc, przeciagac pod roznymi katami,
+// automatycznie wykrywac przy budowaniu, czy sie polaczyc"). Wezly = konce odcinkow, boki bram i srodki wiez osady gracza.
+namespace
+{
+	struct FLiniaMuru
+	{
+		FVector2D A, B;
+		ABudowa* Bud;
+	};
+
+	void ZbierzUmocnienia(UWorld* W, TArray<FVector2D>& Wezly, TArray<FLiniaMuru>& Linie)
+	{
+		for (TActorIterator<ABudowa> It(W); It; ++It)
+		{
+			ABudowa* B = *It;
+			const FRodzajBudynku& R = B->Rodzaj();
+			if (B->Podglad() || !R.bUmocnienie || B->Ruina() || B->Zgliszcza())
+			{
+				continue;
+			}
+			const FVector2D P(B->GetActorLocation());
+			const double Rad = FMath::DegreesToRadians(double(B->GetActorRotation().Yaw));
+			const FVector2D K(FMath::Cos(Rad), FMath::Sin(Rad));
+			if (R.bLinia)
+			{
+				Wezly.Add(P);
+				Wezly.Add(P + K * 400.0);
+				Linie.Add({ P, P + K * 400.0, B });
+			}
+			else if (R.Polowa.X > R.Polowa.Y + 50.f)
+			{
+				// Brama: mur dochodzi do bokow wiezy bramnej (wzdluz X), przejazd w poprzek (Y).
+				Wezly.Add(P - K * double(R.Polowa.X));
+				Wezly.Add(P + K * double(R.Polowa.X));
+			}
+			else
+			{
+				Wezly.Add(P); // wieza: mur konczy sie w jej srodku
+			}
+		}
+	}
+
+	bool Zaczep(const TArray<FVector2D>& Wezly, FVector2D P, float Promien, FVector2D& Out)
+	{
+		double Naj = double(Promien) * Promien;
+		bool bJest = false;
+		for (const FVector2D& Q : Wezly)
+		{
+			const double D = FVector2D::DistSquared(Q, P);
+			if (D < Naj)
+			{
+				Naj = D;
+				Out = Q;
+				bJest = true;
+			}
+		}
+		return bJest;
+	}
+
+	/** Najblizszy punkt na odcinku muru (do Promien); Yaw = kierunek muru. */
+	bool NaMurze(const TArray<FLiniaMuru>& Linie, FVector2D P, float Promien, FVector2D& Out, float& Yaw, int32& Ktory)
+	{
+		double Naj = double(Promien) * Promien;
+		Ktory = -1;
+		for (int32 i = 0; i < Linie.Num(); ++i)
+		{
+			const FVector2D AB = Linie[i].B - Linie[i].A;
+			const double T = FMath::Clamp(((P - Linie[i].A) | AB) / FMath::Max(1.0, AB.SizeSquared()), 0.0, 1.0);
+			const FVector2D Q = Linie[i].A + AB * T;
+			const double D = FVector2D::DistSquared(Q, P);
+			if (D < Naj)
+			{
+				Naj = D;
+				Out = Q;
+				Yaw = float(FMath::RadiansToDegrees(FMath::Atan2(AB.Y, AB.X)));
+				Ktory = i;
+			}
+		}
+		return Ktory >= 0;
+	}
+}
+
 void ABudowniczy::Stawianie(APlayerController* PC)
 {
 	if (Wybrany->ZObszarem())
@@ -1362,6 +1445,41 @@ void ABudowniczy::Stawianie(APlayerController* PC)
 			P = FVector(G, P.Z);
 			Obrot = ObrotDrogi;
 		}
+		// Wieza i brama (26.11.2026): wieza staje na koncu muru albo na murze, brama wchodzi w mur (obrot jak mur);
+		// odcinki pod brama sa rozbierane przy postawieniu. Alt wylacza.
+		MurPodBrama.Reset();
+		if (Wybrany->bUmocnienie && !PC->IsInputKeyDown(EKeys::LeftAlt) && !PC->IsInputKeyDown(EKeys::RightAlt))
+		{
+			TArray<FVector2D> Wezly;
+			TArray<FLiniaMuru> Linie;
+			ZbierzUmocnienia(GetWorld(), Wezly, Linie);
+			const bool bBrama = Wybrany->Polowa.X > Wybrany->Polowa.Y + 50.f;
+			FVector2D Q;
+			float YawM = Obrot;
+			int32 Ktory = -1;
+			if (!bBrama && Zaczep(Wezly, FVector2D(P), 400.f, Q))
+			{
+				P = FVector(Q, P.Z);
+			}
+			else if (NaMurze(Linie, FVector2D(P), 400.f, Q, YawM, Ktory))
+			{
+				P = FVector(Q, P.Z);
+				if (bBrama)
+				{
+					// Zostaje ta z dwoch stron muru, ktora gracz wybral obrotem (front bramy +Y).
+					Obrot = FMath::Abs(FMath::FindDeltaAngleDegrees(YawM, Obrot)) <= 90.f ? YawM : YawM + 180.f;
+					const FVector2D Os(FMath::Cos(FMath::DegreesToRadians(Obrot)), FMath::Sin(FMath::DegreesToRadians(Obrot)));
+					for (const FLiniaMuru& L : Linie)
+					{
+						const FVector2D Sr = (L.A + L.B) * 0.5 - Q;
+						if (FMath::Abs(Sr | Os) < Wybrany->Polowa.X + 100.0 && FMath::Abs(Sr ^ Os) < 200.0)
+						{
+							MurPodBrama.Add(L.Bud);
+						}
+					}
+				}
+			}
+		}
 		float Z;
 		bMozna = MoznaPostawic(*Wybrany, FVector2D(P), Obrot, Z);
 		Punkt = P;
@@ -1383,6 +1501,14 @@ void ABudowniczy::Stawianie(APlayerController* PC)
 	{
 		// Budowe podejmuja wolni osadnicy (AOsada::Tick).
 		Osada->Postaw(*Wybrany, FVector2D(Punkt), Obrot, PunktZ);
+		for (const TWeakObjectPtr<ABudowa>& M : MurPodBrama)
+		{
+			if (M.IsValid())
+			{
+				Osada->Rozbierz(M.Get()); // przejazd bramy zamiast odcinkow muru (material wraca do skladu)
+			}
+		}
+		MurPodBrama.Reset();
 		if (!PC->IsInputKeyDown(EKeys::LeftShift))
 		{
 			Wybierz(nullptr);
@@ -1429,7 +1555,21 @@ void ABudowniczy::StawianieLinii(APlayerController* PC)
 		for (const TWeakObjectPtr<ABudowa>& B : PodgladLinii) { if (B.IsValid()) { B->SetActorHiddenInGame(true); } }
 		return;
 	}
-	const FVector2D K(P);
+	// Przyciaganie (Alt wylacza): poczatek i koniec linii do konca muru, boku bramy albo wiezy w promieniu 3,5 m.
+	TArray<FVector2D> Wezly;
+	TArray<FLiniaMuru> Linie;
+	const bool bPrzyciagaj = !PC->IsInputKeyDown(EKeys::LeftAlt) && !PC->IsInputKeyDown(EKeys::RightAlt);
+	if (bPrzyciagaj)
+	{
+		ZbierzUmocnienia(GetWorld(), Wezly, Linie);
+	}
+	FVector2D K(P);
+	FVector2D Zacz;
+	const bool bZaczep = bPrzyciagaj && Zaczep(Wezly, K, 350.f, Zacz) && !(bLiniaTrwa && Zacz.Equals(LiniaA, 1.0));
+	if (bZaczep)
+	{
+		K = Zacz;
+	}
 	if (!bLiniaTrwa)
 	{
 		ObrocKlawiszem(PC);
@@ -1442,7 +1582,10 @@ void ABudowniczy::StawianieLinii(APlayerController* PC)
 	const FVector2D A = bLiniaTrwa ? LiniaA : K;
 	const FVector2D Wektor = K - A;
 	const float Dist = float(Wektor.Size());
-	const int32 N = bLiniaTrwa && Dist > 150.f ? FMath::Clamp(FMath::RoundToInt32(Dist / Dl), 1, Max) : 1;
+	// Dowolny kat i dlugosc: liczba odcinkow w gore, rowne kroki (odcinki lekko na siebie zachodza), wiec linia konczy sie
+	// dokladnie na kursorze albo na przyciagnietym wezle, bez szpary w rogu.
+	const int32 N = bLiniaTrwa && Dist > 150.f ? FMath::Clamp(FMath::CeilToInt32(Dist / Dl - 0.05f), 1, Max) : 1;
+	const float Krok = N > 0 && bLiniaTrwa && Dist > 150.f ? FMath::Min(Dl, Dist / N) : Dl;
 	const float Yaw = bLiniaTrwa && Dist > 150.f ? FMath::RadiansToDegrees(FMath::Atan2(Wektor.Y, Wektor.X)) : Obrot;
 	if (bLiniaTrwa && Dist > 150.f) { Obrot = Yaw; }
 	const FVector2D Kier(FMath::Cos(FMath::DegreesToRadians(Yaw)), FMath::Sin(FMath::DegreesToRadians(Yaw)));
@@ -1463,7 +1606,7 @@ void ABudowniczy::StawianieLinii(APlayerController* PC)
 	TArray<FVector> Miejsca; // X, Y, Z odcinka; Z = NaN gdy nie wolno
 	for (int32 i = 0; i < PodgladLinii.Num(); ++i)
 	{
-		const FVector2D P0 = A + Kier * (Dl * i);
+		const FVector2D P0 = A + Kier * (Krok * i);
 		float Z = 0.f;
 		const bool bOk = MoznaPostawic(*Wybrany, P0, Yaw, Z); // ten sam punkt, w ktorym odcinek jest zapisany (Polowa.X = 400 obejmuje caly odcinek)
 		Miejsca.Add(FVector(P0, bOk ? Z : TNumericLimits<float>::Max()));
@@ -1826,6 +1969,7 @@ void ABudowniczy::Tick(float DeltaSeconds)
 	if (!bPokazZrobiony && Teren->Gotowe())
 	{
 		bPokazZrobiony = true;
+		FZapisGry::Zastosuj(GetWorld()); // wczytanie zapisu (P4, 26.11.2026): czeka, az teren regionu jest gotowy
 		if (bTrybPokazu)
 		{
 			Pokaz();
@@ -1937,6 +2081,17 @@ void ABudowniczy::Tick(float DeltaSeconds)
 	if (Rody && !Rody->Zalozone())
 	{
 		Rody->Zaloz(Osada, Osada->Oboz()); // etap 5: inne rody osiadaja w okolicy razem z obozem gracza
+	}
+	// Autozapis co 5 min gry (slot 0), nie w trakcie bitwy.
+	DoAutozapisu -= DeltaSeconds;
+	if (DoAutozapisu <= 0.f && !(Bitwa && Bitwa->Walka()))
+	{
+		DoAutozapisu = FZapisGry::CoIleAutozapis;
+		FString Blad;
+		if (FZapisGry::Zapisz(GetWorld(), 0, Blad))
+		{
+			Osada->Ogloszenie(TEXT("Autozapis gry"));
+		}
 	}
 	if (PC->WasInputKeyJustPressed(FUstawienia::Klawisz("Rody")))
 	{

@@ -19,6 +19,7 @@ UCLASS()
 class GRARTS2D_API ATerenKafle : public AActor
 {
 	GENERATED_BODY()
+	friend struct FZapisGry;
 
 public:
 	ATerenKafle();

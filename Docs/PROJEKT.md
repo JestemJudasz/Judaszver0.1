@@ -980,3 +980,16 @@ Kopia Source sprzed zmian: `Kopie/2026-11-26_przed_P1`. Lista 20 uwag i paczek P
 - **Dźwięk**: piła 0,18, kilof 0,22, reszta narzędzi 0,7 (`UDzwieki::GrajPrace`); tło wsi 0,05–0,3 i gwar 0,2 u gracza i w osadach rodów.
 - Nie znaleziono pewnej przyczyny „woły przestały pracować”: woły wożą tylko kłody (od drwala do magazynu albo na budowę), więc bez kłód stoją. Do sprawdzenia w grze po tych poprawkach.
 - Sprawdzone: kompilacja i wszystkie testy automatyczne (14). W grze jeszcze nie oglądane.
+
+## Mury, wieże i bramy łączą się same (26.11.2026, prośba: „brama i mury powinno dać się łączyć, przeciągać pod różnymi kątami, automatycznie wykrywać przy budowaniu, czy się połączyć”)
+- `Budowy/Budowniczy.cpp` (przestrzeń nazw przed `ABudowniczy::Stawianie`): `ZbierzUmocnienia` zbiera węzły umocnień osady gracza (końce odcinków muru, boki bram, środki wież) i linie odcinków; `Zaczep` szuka węzła w promieniu, `NaMurze` punktu na odcinku.
+- Przeciąganie muru (`StawianieLinii`): początek i koniec same przyciągają się do węzła w 3,5 m (Alt wyłącza), pod dowolnym kątem; odcinki są równo dzielone (ostatni nie wystaje), więc linia kończy się dokładnie w węźle.
+- Wieża przyciąga się do węzła w 4 m albo na mur. Brama „wpina się” w mur: bierze jego kierunek (ten z dwóch, bliższy obrotowi gracza), a odcinki muru pod nią są rozbierane po postawieniu (`ABudowniczy::MurPodBrama`).
+
+## Zapis gry ze slotami, P4 (26.11.2026, uwaga z gry: „nie ma zapisu gry ani slotów”)
+- Nowe `Gra/ZapisGry.h/.cpp` (`FZapisGry`): 3 sloty gracza i autozapis (slot 0, co 5 min gry, nie w trakcie bitwy), pliki JSON `Saved/Zapisy/Slot<N>.json` (najpierw `.tmp`, potem podmiana). Moduł `Json` w `grarts2d.Build.cs`.
+- Zapisuje: obóz, budynki (rodzaj po modelu i nazwie, pole/owczarnię z wymiarami obszaru, miejsce, obrót, wariant, postęp, przebudowę w toku, zapasy, dostarczony materiał, priorytet, wytrzymałość, uprawę), rodziny (dom, namiot, praca, jedzenie, ubranie, piwo), skarbiec, podatki, dziesięcinę, kalendarz, zadowolenie, poziom osady, zerwane krzaki, polany i sadzonki terenu, drogi, rody AI (wszystkie pola `FRod`) i kamerę. Nie zapisuje trwającej bitwy, ruszenia, ognia, ruin ani bieżących zajęć ludzi (po wczytaniu biorą pracę od nowa).
+- Wczytanie przeładowuje poziom: `FZapisGry::DoWczytania` (statyczne), `ASwiatGameMode::StartPlay` pomija menu i wchodzi do regionu w miejscu kamery z zapisu, `ABudowniczy::Tick` po gotowym terenie woła `FZapisGry::Zastosuj`. Linia poleceń: `-wczytaj=N`.
+- Menu (`UI/MenuGlowne`, `PokazSloty`): w grze „Zapisz grę” (sloty 1–3, nadpisywanie), „Wczytaj grę” w grze i w menu startowym (też autozapis), opis slotu „pora, rok · rodziny · poziom — data”.
+- `friend struct FZapisGry` w `AOsada`, `ABudowa`, `ARody`, `ATerenKafle`, `ADrogi`, `AKameraMapy`; nowe `AOsada::UstawPrace` (rodzina do konkretnego budynku).
+- Test `grarts2d.Gra.Zapis` (`Testy/ZapisTesty.cpp`): osada z drwalem z rodziną, placem budowy 40%, polem 30 × 20 m z uprawą i drogą przechodzi zapis i wczytanie bez zmian. Kompilacja i wszystkie testy (15) zielone. W grze jeszcze nie oglądane.

@@ -17,6 +17,7 @@ public class grarts2d : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			"Json",
 			"ProceduralMeshComponent",
 			"Slate",
 			"SlateCore"

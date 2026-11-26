@@ -1066,6 +1066,24 @@ int32 AOsada::Domow() const
 	return N;
 }
 
+void AOsada::UstawPrace(int32 I, ABudowa* B)
+{
+	if (!Rodziny.IsValidIndex(I) || !B)
+	{
+		return;
+	}
+	FRodzina& F = Rodziny[I];
+	F.Praca = B;
+	const ERolaLudzika Rola = RolaW(B->Rodzaj());
+	for (const TWeakObjectPtr<ALudzik>& L : { F.Maz, F.Zona })
+	{
+		if (L.IsValid())
+		{
+			L->Przydziel(Rola == ERolaLudzika::Woj && L == F.Zona ? nullptr : B, Rola, true);
+		}
+	}
+}
+
 void AOsada::RodzinyPokazu(int32 N)
 {
 	// Pokaz (-osada): dodatkowe rodziny przy ognisku, bez domu (do budynkow etapu 4 i zbrojowni).
