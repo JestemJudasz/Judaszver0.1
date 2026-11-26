@@ -312,6 +312,67 @@ namespace
 					Grot(Ekran.Last(), (Ekran.Last() - Ekran[Ekran.Num() - 2]).GetSafeNormal(), 10.f, FLinearColor(0.6f, 0.08f, 0.05f, Jas), 2.5f);
 				}
 			}
+			// P6 (26.11.2026, uwaga z gry: "nie ma indykatora, co oddzialy atakuja i ile budynki maja hp"): przy oblezeniu
+			// pasek zycia nad bramami i nad budynkami do podpalenia, linie od waszych oddzialow do bramy / budynku.
+			ABitwa* Bm = const_cast<ABitwa*>(B);
+			if (const AOsadaRodu* V = Bm->RodWyprawy() >= 0 ? Bm->OsadaWyprawy() : nullptr)
+			{
+				auto Pasek = [&](FVector2D Gdzie, float Wys, float Zycie, const FString& Napis)
+				{
+					FVector2f P;
+					if (!Rzut(Gdzie, Wys, P)) { return; }
+					const float Sz = 74.f;
+					Box(Layer + 2, P - FVector2f(Sz * 0.5f + 1.f, 1.f), FVector2f(Sz + 2.f, 9.f), FLinearColor(0.f, 0.f, 0.f, 0.75f));
+					Box(Layer + 3, P - FVector2f(Sz * 0.5f, 0.f), FVector2f(Sz * FMath::Clamp(Zycie, 0.f, 1.f), 7.f),
+						FMath::Lerp(FLinearColor(0.85f, 0.15f, 0.1f), FLinearColor(0.35f, 0.7f, 0.25f), Zycie));
+					FSlateDrawElement::MakeText(Out, Layer + 3, G.ToPaintGeometry(FVector2f(180.f, 14.f), FSlateLayoutTransform(P + FVector2f(-Sz * 0.5f, -17.f))),
+						Napis, Gruba, ESlateDrawEffect::None, StylUI::Napis);
+				};
+				const int32 Bw = Bm->BramaWyprawy();
+				for (int32 k = 0; k < V->Bramy().Num(); ++k)
+				{
+					const AOsadaRodu::FBrama& Br = V->Bramy()[k];
+					Pasek(Br.P, 700.f, Br.Punkty / FMath::Max(1.f, Br.Max), Br.Punkty <= 0.f ? FString(TEXT("Brama rozbita"))
+						: FString::Printf(TEXT("Brama %.0f / %.0f"), Br.Punkty, Br.Max));
+				}
+				if (V->Bramy().IsValidIndex(Bw) && V->Bramy()[Bw].Punkty > 0.f)
+				{
+					const AOsadaRodu::FBrama& Br = V->Bramy()[Bw];
+					for (int32 i = 0; i < Odd.Num(); ++i)
+					{
+						const FOddzial& O = Odd[i];
+						if (O.Strona != 0 || !O.Stoi() || O.Rozkaz != ERozkaz::Atakuj || FVector2D::Distance(O.Srodek, Br.P) < 900.f)
+						{
+							continue;
+						}
+						Luk(O.Srodek + O.Front * 150.f, Br.P + Br.Na * 300.f, 0.f, Swiat);
+						NaEkran(Swiat, Ekran);
+						if (Ekran.Num() >= 2)
+						{
+							const FLinearColor K(0.95f, 0.22f, 0.12f, B->Wybrany(i) ? 1.f : 0.6f);
+							Kreska(Ekran, K, 3.f);
+							Grot(Ekran.Last(), (Ekran.Last() - Ekran[Ekran.Num() - 2]).GetSafeNormal(), 13.f, K, 3.5f);
+						}
+					}
+				}
+				for (const TPair<int32, int32>& Pl : Bm->CelePalenia())
+				{
+					if (Pl.Value < 0 || !Odd.IsValidIndex(Pl.Key) || !Odd[Pl.Key].Stoi())
+					{
+						continue;
+					}
+					float Pr = 0.f;
+					const FVector2D Gd = V->MiejsceDzialki(Pl.Value, Pr);
+					const FRodzajBudynku* Rd = V->RodzajDzialki(Pl.Value);
+					Pasek(Gd, 950.f, V->ZycieDzialki(Pl.Value), FString::Printf(TEXT("%s%s"), Rd ? *Rd->Nazwa : TEXT("Budynek"), V->PlonieDzialka(Pl.Value) ? TEXT(" - płonie") : TEXT("")));
+					Luk(Odd[Pl.Key].Srodek, Gd, 0.f, Swiat);
+					NaEkran(Swiat, Ekran);
+					if (Ekran.Num() >= 2)
+					{
+						Kreska(Ekran, FLinearColor(1.f, 0.55f, 0.1f, 0.85f), 2.5f);
+					}
+				}
+			}
 			const float Puls = 1.f + 0.05f * FMath::Sin(Czas * 4.f);
 			for (const TPair<int32, float>& C : Cele)
 			{
@@ -717,8 +778,58 @@ void ABitwa::Odeslij(FWojownik& W)
 	W.L.Reset();
 }
 
-int32 ABitwa::DodajRuszenie(const FString& Nazwa, const TArray<ALudzik*>& Kto, FVector2D Srodek, FVector2D Front, int32 Wloczni)
+int32 ABitwa::DodajRuszenie(const FString& Nazwa, const TArray<ALudzik*>& Kto, FVector2D Srodek, FVector2D Front, int32 Wloczni,
+	ERodzajWojska Rodzaj, float Wyszkolenie)
 {
+	if (Rodzaj != ERodzajWojska::Chlopi && Rodzaj != ERodzajWojska::Bandyci)
+	{
+		// P6: wyszkolony oddzial osadnikow - wartosci rodzaju z tabeli, wyszkolenie dodaje celnosci i ducha.
+		const FRodzajWojska& R = RodzajWojska(Rodzaj);
+		FOddzial O;
+		O.Nazwa = Nazwa;
+		O.Strona = 0;
+		O.Barwa = FLinearColor(0.72f, 0.14f, 0.09f);
+		O.Tunika = FMath::Lerp(FLinearColor(0.45f, 0.38f, 0.28f), R.Tunika, 0.5f);
+		O.Srodek = O.CelRuchu = Srodek;
+		O.Front = Front.GetSafeNormal();
+		O.Rodzaj = Rodzaj;
+		O.Ikona = R.Ikona;
+		O.Trafienie = R.Trafienie + 0.0006f * Wyszkolenie;
+		O.Pancerz = R.Pancerz;
+		O.Zdrowie = R.Zdrowie;
+		O.Blok = R.Blok;
+		O.Tempo = R.Tempo;
+		O.Przebicie = R.Przebicie;
+		O.Ciecie = R.Ciecie;
+		O.Morale = R.Morale * 0.8f + 0.25f * Wyszkolenie;
+		O.bTopor = R.Ikona != EIkonaBroni::Wlocznia;
+		O.Poczatkowo = Kto.Num();
+		O.Start = CzasBitwy;
+		O.Szeregi = Kto.Num() >= 6 ? 3 : 1;
+		O.Kol = FMath::Max(1, FMath::DivideAndRoundUp(Kto.Num(), O.Szeregi));
+		const int32 Dosw = Doswiadczenie(Wyszkolenie);
+		for (int32 k = 0; k < Kto.Num(); ++k)
+		{
+			ALudzik* L = Kto[k];
+			const bool bBron = k < Wloczni;
+			L->DoRuszenia(bBron ? R.Bron : nullptr);
+			const float Los = FMath::FRand();
+			const int32 Helm = Los < R.Helm ? 1 : Los < R.Helm + R.Czapka ? 2 : Los < R.Helm + R.Czapka + R.Kaptur ? 3 : 0;
+			const bool bChor = Dosw >= 1 && Kto.Num() >= 6 && k == O.Kol + O.Kol / 2;
+			L->UbierzDoBitwy(Helm, FMath::FRand() < 0.5f, bBron && FMath::FRand() < R.Tarcza, bChor, O.Barwa);
+			FWojownik W;
+			W.L = L;
+			W.Zdrowie = O.Zdrowie;
+			W.Slot = k;
+			W.bZOsady = true;
+			W.Doswiadczenie = Dosw;
+			W.Pociski = bBron ? R.Pociski : 0;
+			W.Odnowa = FMath::FRandRange(0.f, 1.f);
+			O.Ludzie.Add(W);
+		}
+		O.bUloz = true;
+		return Oddz.Add(O);
+	}
 	FOddzial O;
 	O.Nazwa = Nazwa;
 	O.Strona = 0;
@@ -726,9 +837,9 @@ int32 ABitwa::DodajRuszenie(const FString& Nazwa, const TArray<ALudzik*>& Kto, F
 	O.Tunika = FLinearColor(0.45f, 0.38f, 0.28f);
 	O.Srodek = O.CelRuchu = Srodek;
 	O.Front = Front.GetSafeNormal();
-	O.Trafienie = 0.32f + 0.08f * Wloczni / FMath::Max(1, Kto.Num()); // chlopi: slabiej niz woje, z wlocznia troche lepiej
+	O.Trafienie = 0.32f + 0.08f * Wloczni / FMath::Max(1, Kto.Num()) + 0.0006f * Wyszkolenie; // chlopi: slabiej niz woje, z wlocznia troche lepiej
 	O.Zdrowie = 2.f;
-	O.Morale = 75.f;
+	O.Morale = 75.f + 0.2f * Wyszkolenie;
 	O.bTopor = Wloczni * 2 < Kto.Num();
 	O.Rodzaj = ERodzajWojska::Chlopi;
 	O.Ikona = O.bTopor ? EIkonaBroni::Topor : EIkonaBroni::Wlocznia;
@@ -748,6 +859,7 @@ int32 ABitwa::DodajRuszenie(const FString& Nazwa, const TArray<ALudzik*>& Kto, F
 		W.Zdrowie = O.Zdrowie;
 		W.Slot = k;
 		W.bZOsady = true;
+		W.Doswiadczenie = Doswiadczenie(Wyszkolenie);
 		W.Odnowa = FMath::FRandRange(0.f, 1.f);
 		O.Ludzie.Add(W);
 	}
@@ -958,17 +1070,48 @@ void ABitwa::Powolaj(int32 m)
 	{
 		Przygotuj(Gdzie);
 	}
-	// Wlocznie z zapasow (kuznia): ile jest, tyle bierze; reszta idzie z narzedziem z pracy.
-	M.Wlocznie = Wies->Wez(ESurowiec::Bron, Kto.Num());
-	const int32 i = DodajRuszenie(M.Nazwa, Kto, Gdzie, Front, M.Wlocznie);
+	// Bron z zapasow (kuznia) wedlug rodzaju oddzialu (P6): ruszenie bierze wlocznie, ile jest; wyszkolony oddzial
+	// bierze swoja bron (wlocznia 1, luk 1, palka 0, topor z tarcza 2, kusza 2, miecz 3). Bez broni dla polowy -
+	// idzie jako pospolite ruszenie z narzedziami.
+	const int32 Na = BroniNaWoja(M.Rodzaj);
+	int32 Uzbr = 0;
+	if (M.Rodzaj == ERodzajWojska::Chlopi)
+	{
+		M.Wlocznie = Uzbr = Wies->Wez(ESurowiec::Bron, Kto.Num());
+	}
+	else if (Na == 0)
+	{
+		Uzbr = Kto.Num();
+		M.Wlocznie = 0;
+	}
+	else
+	{
+		const int32 Wziete = Wies->Wez(ESurowiec::Bron, Kto.Num() * Na);
+		Uzbr = Wziete / Na;
+		if (Wziete - Uzbr * Na > 0) { Wies->Zwroc(ESurowiec::Bron, Wziete - Uzbr * Na); }
+		M.Wlocznie = Uzbr * Na;
+	}
+	const bool bRodzaj = M.Rodzaj != ERodzajWojska::Chlopi && Uzbr * 2 >= Kto.Num();
+	const int32 i = DodajRuszenie(M.Nazwa, Kto, Gdzie, Front, Uzbr, bRodzaj ? M.Rodzaj : ERodzajWojska::Chlopi, M.Wyszkolenie);
 	Oddz[i].Milicja = m;
 	M.Oddzial = i;
 	Rozpocznij();
 	Wybrane.Reset();
 	Wybrane.Add(i);
-	Wies->Ogloszenie(M.Wlocznie > 0
-		? FString::Printf(TEXT("%s: %d chłopa rzuca pracę, %d z włóczniami"), *M.Nazwa, Kto.Num(), M.Wlocznie)
-		: FString::Printf(TEXT("%s: %d chłopa rzuca pracę i bierze narzędzia"), *M.Nazwa, Kto.Num()));
+	if (M.Rodzaj != ERodzajWojska::Chlopi && !bRodzaj)
+	{
+		Wies->Ogloszenie(FString::Printf(TEXT("%s: za mało broni dla rodzaju %s (trzeba %d), idą jako ruszenie"), *M.Nazwa, RodzajWojska(M.Rodzaj).Nazwa, Kto.Num() * Na));
+	}
+	else if (bRodzaj)
+	{
+		Wies->Ogloszenie(FString::Printf(TEXT("%s (%s, wyszkolenie %.0f%%): %d chłopa staje do walki"), *M.Nazwa, RodzajWojska(M.Rodzaj).Nazwa, M.Wyszkolenie, Kto.Num()));
+	}
+	else
+	{
+		Wies->Ogloszenie(M.Wlocznie > 0
+			? FString::Printf(TEXT("%s: %d chłopa rzuca pracę, %d z włóczniami"), *M.Nazwa, Kto.Num(), M.Wlocznie)
+			: FString::Printf(TEXT("%s: %d chłopa rzuca pracę i bierze narzędzia"), *M.Nazwa, Kto.Num()));
+	}
 }
 
 void ABitwa::Rozwiaz(int32 m, bool bOglos)
@@ -2332,6 +2475,16 @@ void ABitwa::SprawdzKoniec()
 			T = Zwyciezca == 0 ? FString::Printf(TEXT("Osada %s zdobyta! Zdecyduj, co z nią zrobić"), *Nazwa)
 				: FString::Printf(TEXT("Wyprawa na %s odparta, ocaleni wracają do domu"), *Nazwa);
 		}
+		if (NapadRoduI >= 0 && RodW < 0)
+		{
+			const FString NR = Rody() && Rody()->Lista().IsValidIndex(NapadRoduI) ? Rody()->Lista()[NapadRoduI].Nazwa : FString(TEXT("Wrogowie"));
+			T = bLupUciekl ? FString::Printf(TEXT("%s odeszli z łupem: %s"), *NR, *OpisTowaru(Lup, LupGroszy))
+				: Zwyciezca == 1 ? FString::Printf(TEXT("%s pokonali wasze ruszenie"), *NR)
+				: bBylLup ? FString::Printf(TEXT("%s rozbici pod osadą, łup odzyskany: %s"), *NR, *OpisTowaru(Lup, LupGroszy))
+				: FString::Printf(TEXT("%s rozbici pod waszą osadą!"), *NR);
+			if (Rody()) { Rody()->PoNapadzieNaGracza(NapadRoduI, bLupUciekl, Lup, LupGroszy, Pol[1], SkalaNapadu); }
+			NapadRoduI = -1;
+		}
 		T += FString::Printf(TEXT(" (polegli: twoi %d, wrogowie %d)"), Pol[0], Pol[1]);
 		if (RodW >= 0 && Zwyciezca == 0)
 		{
@@ -2792,6 +2945,7 @@ void ABitwa::Obroc(FOddzial& O, FVector2D Chce, float Dt)
 void ABitwa::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	SzkolenieTick(DeltaSeconds * ABudowa::Tempo);
 	if (Oddz.Num() == 0)
 	{
 		return;
@@ -3058,6 +3212,7 @@ void ABitwa::Sprzatnij()
 	Wybrane.Reset();
 	for (FMilicja& M : Mil) { M.Oddzial = -1; }
 	bWalkaTrwa = bWrogByl = bLupUciekl = false;
+	NapadRoduI = -1;
 	CzasBitwy = CzasKonca = 0.f;
 	Lup = FSurowce();
 	LupGroszy = 0;
@@ -3279,6 +3434,10 @@ bool ABitwa::Wyprawa(int32 RI, FString& Powod)
 	}
 	Wybrane.Reset();
 	Powod = FString::Printf(TEXT("Wyprawa wyrusza na %s, dojdzie za ok. %.0f s"), *R.Nazwa, MarszW.Caly + 8.f);
+	if (!R.bWojna)
+	{
+		Ro->Wypowiedz(RI, true, FString(), true); // P6: wyprawa = wypowiedzenie wojny (baner)
+	}
 	if (Wies) { Wies->Ogloszenie(Powod); }
 	UE_LOG(LogTemp, Log, TEXT("Bitwa: wyprawa na %s wyrusza (%d oddzialow, marsz %.0f s)"), *R.Nazwa, Moi.Num(), MarszW.Caly);
 	return true;
@@ -3791,4 +3950,184 @@ void ABitwa::PalenieTick(float Dt)
 		UE_LOG(LogTemp, Log, TEXT("Bitwa: woje podpalili %d budynkow, wyprawa wraca"), Spalono);
 		KoniecWyprawy();
 	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// P6 (26.11.2026): szkolenie oddzialow i napady rodow na osade gracza.
+int32 ABitwa::BroniNaWoja(ERodzajWojska R)
+{
+	switch (R)
+	{
+	case ERodzajWojska::Palkarze: return 0;
+	case ERodzajWojska::Tarczownicy: return 2;
+	case ERodzajWojska::Kusznicy: return 2;
+	case ERodzajWojska::Miecznicy: return 3;
+	default: return 1;
+	}
+}
+
+float ABitwa::MaxWyszkolenia()
+{
+	AOsada* Wies = Osada();
+	return Wies && Wies->Gotowych(FRodzajBudynku::Zbrojownia()) > 0 ? 100.f : 50.f;
+}
+
+void ABitwa::ZmienRodzaj(int32 m, int32 Ile)
+{
+	if (!Mil.IsValidIndex(m) || Mil[m].Powolana())
+	{
+		return;
+	}
+	// Kolejnosc wyboru: ruszenie, wlocznicy, palkarze, tarczownicy, miecznicy, lucznicy, kusznicy.
+	static const ERodzajWojska Kolej[] = { ERodzajWojska::Chlopi, ERodzajWojska::Wlocznicy, ERodzajWojska::Palkarze,
+		ERodzajWojska::Tarczownicy, ERodzajWojska::Miecznicy, ERodzajWojska::Lucznicy, ERodzajWojska::Kusznicy };
+	int32 k = 0;
+	for (int32 j = 0; j < UE_ARRAY_COUNT(Kolej); ++j) { if (Kolej[j] == Mil[m].Rodzaj) { k = j; } }
+	k = (k + Ile + UE_ARRAY_COUNT(Kolej)) % UE_ARRAY_COUNT(Kolej);
+	FMilicja& M = Mil[m];
+	if (M.Rodzaj != Kolej[k])
+	{
+		// Nowa bron: wyszkolenie spada o polowe (musza sie nauczyc od nowa), ruszenie nie ma czego tracic.
+		M.Wyszkolenie *= 0.5f;
+	}
+	M.Rodzaj = Kolej[k];
+	++WersjaN;
+}
+
+void ABitwa::PrzelaczCwiczenia(int32 m)
+{
+	if (!Mil.IsValidIndex(m))
+	{
+		return;
+	}
+	Mil[m].bCwiczy = !Mil[m].bCwiczy;
+	Mil[m].DoPosilku = 0.f;
+	++WersjaN;
+}
+
+void ABitwa::SzkolenieTick(float Dt)
+{
+	if (Mil.Num() == 0 || Dt <= 0.f)
+	{
+		return;
+	}
+	AOsada* Wies = Osada();
+	if (!Wies)
+	{
+		return;
+	}
+	const float Max = MaxWyszkolenia();
+	for (FMilicja& M : Mil)
+	{
+		if (M.Powolana())
+		{
+			continue;
+		}
+		if (M.bCwiczy && M.Ilu() > 0)
+		{
+			// Cwiczenia jedza: co pol pory roku 1 jedzenie na 5 chlopa; bez jedzenia cwiczenia staja.
+			M.DoPosilku -= Dt;
+			if (M.DoPosilku <= 0.f)
+			{
+				M.DoPosilku += FKalendarz::DlugoscPory * 0.5f;
+				const int32 Trzeba = FMath::DivideAndRoundUp(M.Ilu(), 5);
+				const int32 Wziete = Wies->Wez(ESurowiec::Jedzenie, Trzeba);
+				if (Wziete < Trzeba)
+				{
+					if (Wziete > 0) { Wies->Zwroc(ESurowiec::Jedzenie, Wziete); }
+					M.bCwiczy = false;
+					++WersjaN;
+					Wies->Ogloszenie(FString::Printf(TEXT("%s: brak jedzenia, ćwiczenia przerwane"), *M.Nazwa));
+					continue;
+				}
+			}
+			// Do 50% w ok. jedna pore roku, potem wolniej (do 100% ze zbrojownia w ok. dwie kolejne pory).
+			const float Tempo = (M.Wyszkolenie < 50.f ? 50.f : 25.f) / FKalendarz::DlugoscPory;
+			M.Wyszkolenie = FMath::Min(Max, M.Wyszkolenie + Tempo * Dt);
+		}
+		else if (M.Wyszkolenie > 0.f)
+		{
+			M.Wyszkolenie = FMath::Max(0.f, M.Wyszkolenie - 10.f / FKalendarz::DlugoscPory * Dt); // -10 na pore bez cwiczen
+		}
+	}
+}
+
+bool ABitwa::NapadRodu(int32 RI, int32 Woje, int32 Chlopi, FVector2D SkadRodu)
+{
+	AOsada* Wies = Osada();
+	ARody* Ro = Rody();
+	if (!Wies || !Wies->MaOboz() || !Ro || !Ro->Lista().IsValidIndex(RI) || RodW >= 0 || MarszW.Etap != 0)
+	{
+		return false;
+	}
+	for (const FOddzial& X : Oddz)
+	{
+		if (X.Strona == 1 && X.Stoi())
+		{
+			return false;
+		}
+	}
+	const FRod& R = Ro->Lista()[RI];
+	const FVector2D C = Wies->Oboz();
+	FVector2D Kier = (SkadRodu - C).GetSafeNormal();
+	if (Kier.IsNearlyZero())
+	{
+		Kier = FVector2D(1.f, 0.f);
+	}
+	// Od strony osady rodu; gdy tam woda, troche w bok.
+	const FVector2D Baza = Kier;
+	for (int32 Proba = 0; Proba < 12; ++Proba)
+	{
+		Kier = Baza.GetRotated((Proba % 2 ? 1.f : -1.f) * (Proba / 2) * 15.f);
+		const FVector2D P = C + Kier * 6000.f;
+		if (FSwiat::Woda(P.X, P.Y) == FSwiat::EWoda::Lad && FSwiat::OdRzeki(P.X, P.Y) > 600.f)
+		{
+			break;
+		}
+	}
+	const FVector2D Prawo(-Kier.Y, Kier.X);
+	SkalaNapadu = FMath::Max(1.f, (Woje + Chlopi) / 60.f);
+	const int32 NW = FMath::RoundToInt32(Woje / SkalaNapadu);
+	const int32 NC = FMath::Max(Woje > 0 ? 0 : 6, FMath::RoundToInt32(Chlopi / SkalaNapadu));
+	if (Oddz.Num() == 0)
+	{
+		Przygotuj(C);
+	}
+	CelNapadu = C;
+	Lup = FSurowce();
+	LupGroszy = 0;
+	bLupUciekl = false;
+	// Rodzaje wojow wedlug cechy rodu: wojowniczy tarczownicy i miecznicy, kupcy wlocznicy i kusznicy, pobozni wlocznicy i lucznicy.
+	const ERodzajWojska Pierwszy = R.Cecha == ECechaRodu::Wojowniczy ? ERodzajWojska::Tarczownicy : ERodzajWojska::Wlocznicy;
+	const ERodzajWojska Drugi = R.Cecha == ECechaRodu::Wojowniczy ? ERodzajWojska::Miecznicy
+		: (R.Cecha == ECechaRodu::Kupiecki ? ERodzajWojska::Kusznicy : ERodzajWojska::Lucznicy);
+	struct FGrupa { ERodzajWojska Rd; int32 Ilu; int32 Dosw; };
+	TArray<FGrupa> Grupy;
+	auto Dziel = [&Grupy](ERodzajWojska Rd, int32 Ilu, int32 Dosw)
+	{
+		const int32 N = FMath::DivideAndRoundUp(Ilu, 14);
+		for (int32 g = 0; g < N; ++g) { Grupy.Add({ Rd, Ilu / N + (g < Ilu % N ? 1 : 0), Dosw }); }
+	};
+	const int32 NDrugi = NW / 3;
+	if (NW - NDrugi > 0) { Dziel(Pierwszy, NW - NDrugi, 1); }
+	if (NDrugi > 0) { Dziel(Drugi, NDrugi, 1); }
+	if (NC > 0) { Dziel(ERodzajWojska::Chlopi, NC, 0); }
+	for (int32 g = 0; g < Grupy.Num(); ++g)
+	{
+		const FGrupa& Gr = Grupy[g];
+		const bool bStrzelcy = RodzajWojska(Gr.Rd).Strzela();
+		const float Glebia = bStrzelcy ? 7600.f : (Gr.Rd == ERodzajWojska::Chlopi ? 6900.f : 6000.f);
+		const FVector2D Gdzie = C + Kier * Glebia + Prawo * ((g - (Grupy.Num() - 1) * 0.5f) * 1400.f);
+		const FLinearColor Tun = FMath::Lerp(RodzajWojska(Gr.Rd).Tunika, R.Barwa, 0.55f);
+		const int32 i = DodajOddzial(Gr.Rd, FString::Printf(TEXT("%s: %s"), *R.Nazwa, RodzajWojska(Gr.Rd).Nazwa), 1, Gr.Ilu, Gdzie, -Kier, Gr.Dosw, Tun);
+		Oddz[i].Barwa = R.Barwa;
+		Oddz[i].bNapad = true;
+		Oddz[i].Skad = Gdzie + Kier * 2500.f;
+		Oddz[i].Start = CzasBitwy + 15.f;
+	}
+	NapadRoduI = RI;
+	Rozpocznij();
+	Wies->Ogloszenie(FString::Printf(TEXT("%s atakują waszą osadę: %d wojów i %d chłopa! Powołaj ruszenie (J)."), *R.Nazwa, Woje, Chlopi));
+	UE_LOG(LogTemp, Log, TEXT("Bitwa: napad rodu %s na osade gracza (%d wojow, %d chlopow, skala %.1f)"), *R.Nazwa, Woje, Chlopi, SkalaNapadu);
+	return true;
 }

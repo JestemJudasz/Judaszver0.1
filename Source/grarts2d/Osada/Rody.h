@@ -75,6 +75,7 @@ struct FRod
 	int32 Napastnik = -1;        // kto napadl ostatnio (do odbudowy i proby pokoju)
 	bool bObrona = false;        // silniejszy wrogi sasiad: zbroi sie do 1/4 rodzin
 	int32 GroziGraczowi = 0;     // 1 = zapowiedzial napad na gracza, przyjdzie za pore
+	bool bWojna = false;         // P6 (26.11.2026): w wojnie z graczem (wypowiedziana; konczy ja pokoj, hold albo danina)
 	// Mury (23.11.2026, prosba uzytkownika: rody buduja osady z murami): 0 brak, 1 palisada, 2 mur kamienny.
 	int32 Mury = 0;
 	bool bGlodny = false;         // przy ostatnim posilku zabraklo jedzenia (rozpuszcza wojow do 1/4 rodzin)
@@ -170,6 +171,34 @@ public:
 	/** Stosunek slowami: "wrogi", "chlodny", "obojetny", "przyjazny", "sprzymierzony". */
 	static const TCHAR* OpisStosunku(float S);
 
+	// --- P6 (26.11.2026, uwagi z gry: "ma byc widac na mapie herb wojska, kiedy i gdzie sie porusza", "mamy widziec,
+	// czy ktos wypowiedzial nam wojne") ---
+	/** Armia rodu w marszu: idzie po mapie (herb na mapie papierowej i grywalnej), skutek dopiero po dojsciu.
+	 *  Cel = indeks rodu albo -1 = osada gracza (tam prawdziwa bitwa ABitwa::NapadRodu, gdy gracz patrzy na mape grywalna). */
+	struct FArmia
+	{
+		int32 Rod = -1, Cel = -1;
+		FVector2D Skad = FVector2D::ZeroVector, Dokad = FVector2D::ZeroVector;
+		float Czas = 0.f, Caly = 30.f;
+		int32 Woje = 0, Chlopi = 0;
+		bool bCzeka = false;  // doszla pod osade gracza, czeka na bitwe
+		float Czeka = 0.f;
+		FVector2D Gdzie() const { return FMath::Lerp(Skad, Dokad, FMath::Clamp(Czas / FMath::Max(1.f, Caly), 0.f, 1.f)); }
+	};
+	const TArray<FArmia>& Armie() const { return ArmieL; }
+	/** Sekundy gry marszu na odleglosc (cm): 6 s na km, 25..120 s. */
+	static float CzasMarszuArmii(float OdlCm) { return FMath::Clamp(OdlCm / 1.0e5f * 6.f, 25.f, 120.f); }
+	/** Wojna z graczem: bWojna, ogloszenie i baner na srodku ekranu. bOdGracza = wy wypowiadacie (wyprawa). */
+	void Wypowiedz(int32 R, bool bWojna, const FString& Dlaczego, bool bOdGracza = false);
+	/** Pokoj za grosze (30 + 2 na rodzine); konczy wojne i zawraca armie idace na osade gracza. */
+	int32 CenaPokoju(int32 R) const;
+	bool ZawrzyjPokoj(int32 R, FString& Powod);
+	/** Bitwa z napadem rodu na osade gracza skonczona (ABitwa): lup dla rodu albo straty. Skala = ilu ludzi rodu na jednego na polu. */
+	void PoNapadzieNaGracza(int32 R, bool bZLupem, const FSurowce& Lup, int32 Gr, int32 Poleglo, float Skala);
+	/** Baner wojny (UI): tekst i do kiedy (czas rzeczywisty swiata). */
+	FString Baner;
+	double BanerDo = 0.0;
+
 private:
 	void KrokRodu(FRod& R, float Dt);
 	void Produkuj(FRod& R, float Dt);
@@ -185,6 +214,10 @@ private:
 	void NowaPoraRodow();
 	void Wladca(int32 I);
 	void Bitwa(int32 A, int32 B);
+	TArray<FArmia> ArmieL;
+	void ArmieTick(float Dt);
+	/** Napad rodu na gracza liczony z sily (bez bitwy: gracz nie patrzy na mape grywalna albo brak ABitwa). */
+	void NapadLiczbami(int32 I);
 	void UstawStosunki();
 	float BazaStosunku(int32 A, int32 B) const;
 	FRandomStream Los;

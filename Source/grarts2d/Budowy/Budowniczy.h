@@ -102,6 +102,10 @@ private:
 	bool Klik(APlayerController* PC);
 	void OtworzOkno(ABudowa* B);
 	void ZamknijOkno();
+	/** P6: klik w budynek albo brame osady rodu - okienko z nazwa, poziomem i zyciem (false = nic tam nie ma). */
+	bool OtworzWrogi(FVector2D P);
+	TWeakObjectPtr<class AOsadaRodu> WrogaOsada;
+	int32 WrogiRod = -1, WrogaDzialka = -1, WrogaBrama = -1;
 	UTexture2D* IkonaDla(const FRodzajBudynku& R) const;
 	TSharedRef<SWidget> LicznikSurowcow();
 	/** Okno rodow (H): otworz / zamknij; IndeksRodu >= 0 - od razu ten rod. */

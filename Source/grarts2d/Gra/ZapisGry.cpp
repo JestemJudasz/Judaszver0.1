@@ -161,7 +161,7 @@ namespace
 #define ROD_LICZBY(X) X(OdlegloscKm) X(Rodzin) X(Grosze) X(Buduje) X(DoKonca) X(Woje) X(Zadowolenie) X(Stosunek) X(ZadaDaniny) \
 	X(CzasZadania) X(DoPosilku) X(DoRodziny) X(BezPostepu) X(NajRodzin) X(NajBudynkow) X(NajWojow) X(Zastojow) X(Decyzje) \
 	X(Napadow) X(Napadniety) X(Napastnik) X(GroziGraczowi) X(Mury)
-#define ROD_FLAGI(X) X(bLennik) X(bWrogi) X(bZastoj) X(bObrona) X(bGlodny)
+#define ROD_FLAGI(X) X(bLennik) X(bWrogi) X(bZastoj) X(bObrona) X(bGlodny) X(bWojna)
 
 	FObj ZapiszRod(const FRod& R)
 	{

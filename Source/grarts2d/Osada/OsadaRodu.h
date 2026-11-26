@@ -76,6 +76,15 @@ public:
 	bool Podpal(int32 i, float Opoznienie = 0.f);
 	int32 Plonacych() const { return Pozary.Num(); }
 	int32 Zniszczonych() const { return Zniszczone.Num(); }
+	// --- P6 (26.11.2026, uwaga z gry: "po kliknieciu na wrogi budynek widziec, jaki ma poziom i ile ma jeszcze zycia") ---
+	/** Dzialka (budynek) pod punktem terenu: obrys obrocony frontem; -1 = brak. */
+	int32 DzialkaPod(FVector2D P) const;
+	/** Brama najblizej P (do Promien); -1 = brak. */
+	int32 BramaPod(FVector2D P, float Promien = 600.f) const;
+	/** Zycie budynku 0..1: caly 1, plonie - spada do zawalenia (35 s), uszkodzony 0,5, zgliszcza 0. */
+	float ZycieDzialki(int32 i) const;
+	bool PlonieDzialka(int32 i) const;
+	const struct FRodzajBudynku* RodzajDzialki(int32 i) const;
 	/** Oblezenie: mieszkancy chowaja sie (bez ludzikow przy pracy), bramy nie sa naprawiane. */
 	void UstawOblezenie(bool b) { bOblezona = b; }
 

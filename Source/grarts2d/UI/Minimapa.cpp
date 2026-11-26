@@ -86,7 +86,7 @@ void SMinimapa::Odrysuj(FVector2D Srodek, double BokSwiata, bool bRegion) const
 		{
 			return;
 		}
-		T->SRGB = false;
+		T->SRGB = true; // piksele z ToFColor(true) sa w sRGB (bez tego obraz byl wyblakly, zrzut 26.11.2026)
 		T->Filter = TF_Bilinear;
 		T->AddressX = T->AddressY = TA_Clamp;
 		Obraz.Reset(T);

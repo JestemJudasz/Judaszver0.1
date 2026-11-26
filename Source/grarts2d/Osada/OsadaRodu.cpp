@@ -1,4 +1,4 @@
-// Plik: Source/grarts2d/Osada/OsadaRodu.cpp
+﻿// Plik: Source/grarts2d/Osada/OsadaRodu.cpp
 #include "Osada/OsadaRodu.h"
 #include "Misc/FileHelper.h"
 #include "Osada/Rody.h"
@@ -1467,4 +1467,79 @@ void AOsadaRodu::PozaryTick(float DtG)
 	{
 		Przebuduj();
 	}
+}
+
+// P6 (26.11.2026): klik w budynek osady rodu - poziom i zycie.
+int32 AOsadaRodu::DzialkaPod(FVector2D P) const
+{
+	const TArray<const FRodzajBudynku*>& L = FRodzajBudynku::DoBudowania();
+	int32 Naj = -1;
+	double NajD = TNumericLimits<double>::Max();
+	for (int32 i = 0; i < Dzialki.Num(); ++i)
+	{
+		const FDzialka& D = Dzialki[i];
+		if (!L.IsValidIndex(D.Typ))
+		{
+			continue;
+		}
+		const FRodzajBudynku& B = *L[D.Typ];
+		// Front modelu = +Y, wiec os X budynku to (Przod.Y, -Przod.X).
+		const FVector2D R = P - D.P;
+		const double Lx = R | FVector2D(D.Przod.Y, -D.Przod.X), Ly = R | D.Przod;
+		if (FMath::Abs(Lx) <= B.Polowa.X + 100.0 && FMath::Abs(Ly) <= B.Polowa.Y + 100.0 && R.SizeSquared() < NajD)
+		{
+			NajD = R.SizeSquared();
+			Naj = i;
+		}
+	}
+	return Naj;
+}
+
+int32 AOsadaRodu::BramaPod(FVector2D P, float Promien) const
+{
+	int32 Naj = -1;
+	double NajD = Promien;
+	for (int32 k = 0; k < BramyO.Num(); ++k)
+	{
+		const double D = FVector2D::Distance(P, BramyO[k].P);
+		if (D < NajD) { NajD = D; Naj = k; }
+	}
+	return Naj;
+}
+
+bool AOsadaRodu::PlonieDzialka(int32 i) const
+{
+	if (!Dzialki.IsValidIndex(i))
+	{
+		return false;
+	}
+	const FIntPoint K(Dzialki[i].Typ, Dzialki[i].Nr);
+	return Pozary.ContainsByPredicate([&K](const FPozar& F) { return F.K == K && F.Czas < 35.f; });
+}
+
+float AOsadaRodu::ZycieDzialki(int32 i) const
+{
+	if (!Dzialki.IsValidIndex(i))
+	{
+		return 0.f;
+	}
+	const FIntPoint K(Dzialki[i].Typ, Dzialki[i].Nr);
+	if (const int32* Z = Zniszczone.Find(K); Z && *Z >= 2)
+	{
+		return 0.f;
+	}
+	for (const FPozar& F : Pozary)
+	{
+		if (F.K == K)
+		{
+			return FMath::Clamp(1.f - FMath::Max(0.f, F.Czas) / 35.f, 0.f, 1.f);
+		}
+	}
+	return Zniszczone.Contains(K) ? 0.5f : 1.f;
+}
+
+const FRodzajBudynku* AOsadaRodu::RodzajDzialki(int32 i) const
+{
+	const TArray<const FRodzajBudynku*>& L = FRodzajBudynku::DoBudowania();
+	return Dzialki.IsValidIndex(i) && L.IsValidIndex(Dzialki[i].Typ) ? L[Dzialki[i].Typ] : nullptr;
 }

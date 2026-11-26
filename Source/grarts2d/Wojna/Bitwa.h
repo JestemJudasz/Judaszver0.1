@@ -23,6 +23,7 @@
 
 class ALudzik;
 class AOsada;
+class AOsadaRodu;
 class ATerenKafle;
 class APlayerController;
 class SWidget;
@@ -120,7 +121,13 @@ struct FMilicja
 	FString Nazwa;
 	TArray<TWeakObjectPtr<ALudzik>> Ludzie;
 	int32 Oddzial = -1;       // indeks w Oddzialy(), gdy powolana
-	int32 Wlocznie = 0;       // wziete z zapasow przy powolaniu (oddawane przy rozwiazaniu)
+	int32 Wlocznie = 0;       // bron wzieta z zapasow przy powolaniu (oddawana przy rozwiazaniu)
+	// Szkolenie (P6, 26.11.2026, uwaga z gry: "caly system szkolenia wojska od nowa w zupelnie innym stylu"):
+	// gracz wybiera, kim ma byc oddzial, i wysyla go na cwiczenia; wyszkolenie rosnie, gdy cwicza, i powoli spada bez cwiczen.
+	ERodzajWojska Rodzaj = ERodzajWojska::Chlopi; // Chlopi = pospolite ruszenie z narzedziami
+	float Wyszkolenie = 0.f;  // 0..100 (bez zbrojowni najwyzej 50)
+	bool bCwiczy = false;     // cwiczy co dzien (zjada wiecej, mezczyzni pracuja krocej)
+	float DoPosilku = 0.f;    // odliczanie jedzenia za cwiczenia
 	bool Powolana() const { return Oddzial >= 0; }
 	int32 Ilu() const;
 };
@@ -160,6 +167,22 @@ public:
 	TArray<ALudzik*> WolniMezczyzni();
 	int32 MezczyznWOsadzie();
 	static constexpr int32 MaxMilicji = 30;
+	/** Szkolenie (P6): nastepny rodzaj oddzialu (przycisk w oknie Wojsko), cwiczenia wl./wyl. */
+	void ZmienRodzaj(int32 m, int32 Ile = 1);
+	void PrzelaczCwiczenia(int32 m);
+	/** Ile broni z zapasow bierze jeden woj rodzaju R (wlocznia 1, luk 1, palka 0, topor z tarcza 2, kusza 2, miecz 3). */
+	static int32 BroniNaWoja(ERodzajWojska R);
+	/** Najwyzsze wyszkolenie: 50 bez zbrojowni, 100 ze zbrojownia. */
+	float MaxWyszkolenia();
+	/** Wyszkolenie na doswiadczenie woja w bitwie (0 rekrut, 1 wojak, 2 weteran). */
+	static int32 Doswiadczenie(float Wysz) { return Wysz >= 70.f ? 2 : (Wysz >= 35.f ? 1 : 0); }
+	/** P6: napad armii rodu R na osade gracza - bitwa jak napad bandytow, woje w barwie rodu, od strony jego osady. */
+	bool NapadRodu(int32 Rod, int32 Woje, int32 Chlopi, FVector2D Skad);
+	int32 RodNapadu() const { return NapadRoduI; }
+	/** Do znakow bitwy: osada oblegana wyprawa, brama do rozbicia, budynki do podpalenia (oddzial -> dzialka). */
+	AOsadaRodu* OsadaWyprawy() { return CelWyprawy(); }
+	int32 BramaWyprawy() const { return BramaW; }
+	const TMap<int32, int32>& CelePalenia() const { return Palenie; }
 	/** -bitwa: szuka laki w okolicy startu, zaczyna bitwe i ustawia kamere. */
 	void PokazBitwy();
 	bool Trwa() const { return bTrwa; }
@@ -231,6 +254,9 @@ private:
 	void Dziennik();
 	static void DoDziennika(const FString& Wiersz);
 	int32 RodW = -1;          // rod, na ktory idzie wyprawa
+	int32 NapadRoduI = -1;    // P6: rod, ktory napadl na osade gracza (bitwa trwa)
+	float SkalaNapadu = 1.f;  // ilu ludzi rodu na jednego na polu (duze armie sa pomniejszone)
+	void SzkolenieTick(float Dt);
 	int32 BramaW = -1;        // brama do rozbicia (indeks w AOsadaRodu::Bramy)
 	bool bZdobyta = false;
 	FVector2D Dom = FVector2D::ZeroVector; // oboz gracza (tu wracaja woje wyprawy)
@@ -315,7 +341,8 @@ private:
 	/** Zywi dostaja miejsca w szyku od pierwszego szeregu; tylni zajmuja miejsca poleglych. */
 	void Uloz(FOddzial& O);
 	/** Pospolite ruszenie: oddzial z osadnikow (nie tworzy nowych ludzikow). */
-	int32 DodajRuszenie(const FString& Nazwa, const TArray<ALudzik*>& Kto, FVector2D Srodek, FVector2D Front, int32 Wloczni);
+	int32 DodajRuszenie(const FString& Nazwa, const TArray<ALudzik*>& Kto, FVector2D Srodek, FVector2D Front, int32 Wloczni,
+		ERodzajWojska Rodzaj = ERodzajWojska::Chlopi, float Wyszkolenie = 0.f);
 	AOsada* Osada();
 	/** Gdzie staje oddzial ruszenia m: przy obozie, a gdy sa bandyci - od ich strony. */
 	FVector2D MiejsceZbiorki(int32 m, FVector2D& Front);

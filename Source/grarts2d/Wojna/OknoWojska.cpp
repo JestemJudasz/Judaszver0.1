@@ -62,7 +62,7 @@ void SOknoWojska::Construct(const FArguments& InArgs)
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 					[
-						SNew(STextBlock).Text(FText::FromString(TEXT("WOJSKO — POSPOLITE RUSZENIE"))).Font(Czcionka(12, true)).ColorAndOpacity(StylUI::Zloto)
+						SNew(STextBlock).Text(FText::FromString(TEXT("WOJSKO — ODDZIAŁY I ĆWICZENIA"))).Font(Czcionka(12, true)).ColorAndOpacity(StylUI::Zloto)
 					]
 					+ SHorizontalBox::Slot().AutoWidth()
 					[
@@ -111,8 +111,9 @@ void SOknoWojska::Construct(const FArguments& InArgs)
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 				[
 					SNew(STextBlock).Font(Czcionka(9)).ColorAndOpacity(StylUI::Szary).AutoWrapText(true)
-					.Text(FText::FromString(TEXT("Powołani rzucają pracę: biorą włócznie z zapasów (kuźnia), reszta idzie z narzędziami. "
-						"Kobiety pracują dalej, budowanie trwa. Rozwiązani wracają do swojej pracy. Sterowanie jak w bitwie: lewy klik / ramka - wybór, prawy - idź / atakuj.")))
+					.Text(FText::FromString(TEXT("Każdemu oddziałowi wybierz rodzaj (włócznicy, łucznicy...) i włącz ćwiczenia - wyszkolenie rośnie, a wyszkoleni biją celniej i trudniej uciekają. "
+						"Powołani rzucają pracę i biorą broń z zapasów (kuźnia); bez broni dla połowy idą jako ruszenie z narzędziami. "
+						"Kobiety pracują dalej. Sterowanie jak w bitwie: lewy klik / ramka - wybór, prawy - idź / atakuj.")))
 				]
 			]
 		]
@@ -191,8 +192,63 @@ void SOknoWojska::Wiersze()
 							}
 							const FOddzial& O = X->Oddzialy()[M.Oddzial];
 							return FText::FromString(FString::Printf(TEXT("%d chłopa w polu · %s · duch %d%%%s"), O.NaPolu(), ABitwa::OpisStanu(O),
-								FMath::RoundToInt32(O.Morale), M.Wlocznie > 0 ? *FString::Printf(TEXT(" · %d włóczni"), M.Wlocznie) : TEXT("")));
+								FMath::RoundToInt32(O.Morale), M.Wlocznie > 0 ? *FString::Printf(TEXT(" · %d broni"), M.Wlocznie) : TEXT("")));
 						})
+					]
+					// P6: szkolenie - kim jest oddzial, czy cwiczy, wyszkolenie.
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 0.f)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(SButton).ButtonStyle(&Styl)
+							.ToolTipText(FText::FromString(TEXT("Kim ma być oddział (klik: następny rodzaj). Przy powołaniu bierze broń z zapasów: włócznia 1, łuk 1, pałka 0, topór z tarczą 2, kusza 2, miecz 3 na chłopa. Zmiana rodzaju zabiera połowę wyszkolenia.")))
+							.IsEnabled_Lambda([WDomu]() { return WDomu(); })
+							.OnClicked_Lambda([Ja, m]() { if (ABitwa* X = Ja.Get()) { X->ZmienRodzaj(m); } return FReply::Handled(); })
+							[
+								SNew(STextBlock).Font(Czcionka(9, true)).ColorAndOpacity(StylUI::Zloto)
+								.Text_Lambda([Ja, m]()
+								{
+									const ABitwa* X = Ja.Get();
+									if (!X || !X->Milicje().IsValidIndex(m)) { return FText::GetEmpty(); }
+									return FText::FromString(FString::Printf(TEXT("%s ▸"), RodzajWojska(X->Milicje()[m].Rodzaj).Nazwa));
+								})
+							]
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f, 0.f, 0.f)
+						[
+							SNew(SButton).ButtonStyle(&Styl)
+							.ToolTipText(FText::FromString(TEXT("Ćwiczenia: wyszkolenie rośnie (do 50% w porę roku; powyżej 50% tylko ze zbrojownią, do 100%). Kosztują 1 jedzenie na 5 chłopa co pół pory. Bez ćwiczeń wyszkolenie powoli spada.")))
+							.OnClicked_Lambda([Ja, m]() { if (ABitwa* X = Ja.Get()) { X->PrzelaczCwiczenia(m); } return FReply::Handled(); })
+							[
+								SNew(STextBlock).Font(Czcionka(9, true))
+								.ColorAndOpacity_Lambda([Ja, m]()
+								{
+									const ABitwa* X = Ja.Get();
+									return FSlateColor(X && X->Milicje().IsValidIndex(m) && X->Milicje()[m].bCwiczy ? StylUI::Zloto : StylUI::Szary);
+								})
+								.Text_Lambda([Ja, m]()
+								{
+									const ABitwa* X = Ja.Get();
+									const bool b = X && X->Milicje().IsValidIndex(m) && X->Milicje()[m].bCwiczy;
+									return FText::FromString(b ? TEXT("Ćwiczą ✓") : TEXT("Ćwiczenia"));
+								})
+							]
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(8.f, 0.f, 0.f, 0.f)
+						[
+							SNew(STextBlock).Font(Czcionka(9)).ColorAndOpacity(StylUI::Napis)
+							.Text_Lambda([Ja, m]()
+							{
+								ABitwa* X = Ja.Get();
+								if (!X || !X->Milicje().IsValidIndex(m)) { return FText::GetEmpty(); }
+								const FMilicja& M = X->Milicje()[m];
+								static const TCHAR* Stopnie[] = { TEXT("rekruci"), TEXT("wojacy"), TEXT("weterani") };
+								return FText::FromString(FString::Printf(TEXT("wyszkolenie %d%% (%s, najwyżej %d%%) · broni: %d"),
+									FMath::RoundToInt32(M.Wyszkolenie), Stopnie[ABitwa::Doswiadczenie(M.Wyszkolenie)], FMath::RoundToInt32(X->MaxWyszkolenia()),
+									ABitwa::BroniNaWoja(M.Rodzaj) * M.Ilu()));
+							})
+						]
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[Maly(TEXT("Powołaj"), TEXT("Rzucają pracę i stają przed osadą"), [Ja, m]() { if (ABitwa* X = Ja.Get()) { X->Powolaj(m); } }, WDomu)]

@@ -1,9 +1,13 @@
-// Plik: Source/grarts2d/Osada/Rody.cpp
+﻿// Plik: Source/grarts2d/Osada/Rody.cpp
 #include "Osada/Rody.h"
 #include "Osada/Osada.h"
 #include "Osada/OsadaRodu.h"
 #include "Budowy/Budowa.h"
 #include "Swiat/SwiatWysokosci.h"
+#include "Wojna/Bitwa.h"
+#include "Swiat/TerenKafle.h" // Bitwa.h: UstawTeren potrzebuje pelnego typu
+#include "EngineUtils.h"
+#include "Engine/World.h"
 
 namespace
 {
@@ -375,6 +379,7 @@ void ARody::Przewin(float Sekundy)
 			KrokRodu(R, Krok);
 			Pilnuj(R, Krok);
 		}
+		ArmieTick(Krok);
 		DoRoku -= Krok;
 		if (DoRoku <= 0.f)
 		{
@@ -1034,6 +1039,10 @@ bool ARody::ZaplacDanine(int32 RI, FString& Powod)
 	R.Grosze += R.ZadaDaniny;
 	R.Stosunek = FMath::Min(100.f, R.Stosunek + 10.f);
 	R.bWrogi = false;
+	if (R.bWojna)
+	{
+		Wypowiedz(RI, false, TEXT("Danina zapłacona."));
+	}
 	Powod = FString::Printf(TEXT("Zapłacono daninę rodowi %s: %d groszy."), *R.Nazwa, R.ZadaDaniny);
 	R.ZadaDaniny = 0;
 	return true;
@@ -1050,6 +1059,10 @@ void ARody::OdmowDaniny(int32 RI)
 	R.bWrogi = true;
 	R.Stosunek = FMath::Max(-100.f, R.Stosunek - 30.f);
 	Ogloszenie(FString::Printf(TEXT("%s: odmowa daniny. Grożą wojną i zrywają handel."), *R.Nazwa));
+	if (!R.bWojna && R.Cecha == ECechaRodu::Wojowniczy)
+	{
+		Wypowiedz(RI, true, TEXT("Odmówiliście daniny."));
+	}
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1228,32 +1241,69 @@ void ARody::Wladca(int32 I)
 	switch (D)
 	{
 	case EDecyzja::Napad:
-		Bitwa(I, Cel);
+		// P6: w grze (jest osada gracza i swiat) armia idzie po mapie, bitwa liczy sie po dojsciu; w testach od razu.
+		if (Osada.IsValid() && GetWorld())
+		{
+			if (ArmieL.ContainsByPredicate([I](const FArmia& A) { return A.Rod == I; }))
+			{
+				break; // juz maszeruje
+			}
+			FArmia A;
+			A.Rod = I;
+			A.Cel = Cel;
+			A.Skad = R.Gdzie;
+			A.Dokad = Rody[Cel].Gdzie;
+			A.Caly = CzasMarszuArmii(float(FVector2D::Distance(A.Skad, A.Dokad)));
+			A.Woje = R.Woje;
+			ArmieL.Add(A);
+			Ogloszenie(FString::Printf(TEXT("%s wyruszyli na %s (%d wojów)"), *R.Nazwa, *Rody[Cel].Nazwa, R.Woje));
+		}
+		else
+		{
+			Bitwa(I, Cel);
+		}
 		break;
 	case EDecyzja::NapadNaGracza:
 		if (R.GroziGraczowi == 0)
 		{
-			R.GroziGraczowi = 1; // zapowiedz: gracz ma pore na woje albo podarunek
-			Ogloszenie(FString::Printf(TEXT("%s zapowiadają napad za porę roku! Wystaw woje albo poślij podarunek (okno rodów, H)."), *R.Nazwa));
+			R.GroziGraczowi = 1; // zapowiedz: gracz ma pore na woje, podarunek albo pokoj za grosze
+			if (!R.bWojna)
+			{
+				Wypowiedz(I, true, TEXT("Napadną za porę roku. Wystaw woje, poślij podarunek albo kup pokój (okno rodów, H)."));
+			}
+			else
+			{
+				Ogloszenie(FString::Printf(TEXT("%s szykują napad na waszą osadę za porę roku!"), *R.Nazwa));
+			}
 			Bo += TEXT(", zapowiedź");
 		}
 		else
 		{
 			R.GroziGraczowi = 0;
-			int32 Gr = 0;
-			if (R.Sila() * Los.FRandRange(0.85f, 1.15f) > SG * 1.2f)
+			R.bWojna = true;
+			if (ArmieL.ContainsByPredicate([I](const FArmia& A) { return A.Rod == I; }))
 			{
-				const FSurowce Lup = Osada->Grabiez(0.25f, Gr);
-				for (ESurowiec S : WszystkieSurowce) { R.Zapas[S] += Lup[S]; }
-				R.Grosze += Gr;
-				Ogloszenie(FString::Printf(TEXT("%s napadli na osadę i zabrali łup (%d groszy)"), *R.Nazwa, Gr));
+				break; // juz maszeruje
+			}
+			if (Osada.IsValid() && Osada->MaOboz() && GetWorld())
+			{
+				// P6: armia rodu idzie na osade gracza; po dojsciu prawdziwa bitwa (ABitwa::NapadRodu).
+				FArmia A;
+				A.Rod = I;
+				A.Cel = -1;
+				A.Skad = R.Gdzie;
+				A.Dokad = Osada->Oboz();
+				A.Caly = CzasMarszuArmii(float(FVector2D::Distance(A.Skad, A.Dokad)));
+				A.Woje = R.Woje;
+				A.Chlopi = FMath::Clamp(R.Rodzin / 4, 2, 30);
+				ArmieL.Add(A);
+				Ogloszenie(FString::Printf(TEXT("%s wyruszyli na waszą osadę: %d wojów i %d chłopa. Dojdą za ok. %.0f s - powołajcie ruszenie (J)!"),
+					*R.Nazwa, A.Woje, A.Chlopi, A.Caly));
 			}
 			else
 			{
-				R.Woje -= R.Woje / 2;
-				Ogloszenie(FString::Printf(TEXT("%s napadli na osadę, ale wasza siła ich odparła"), *R.Nazwa));
+				NapadLiczbami(I);
 			}
-			R.Stosunek = FMath::Max(-100.f, R.Stosunek - 20.f);
 		}
 		break;
 	case EDecyzja::Danina:
@@ -1338,6 +1388,7 @@ FString ARody::PoWyprawie(int32 RI, int32 Wybor, int32 Poleglo)
 		R.bWrogi = false;
 		R.ZadaDaniny = 0;
 		R.GroziGraczowi = 0;
+		R.bWojna = false; // hold konczy wojne
 		R.Stosunek = FMath::Max(-100.f, FMath::Min(R.Stosunek, 0.f) - 10.f);
 		T = FString::Printf(TEXT("%s składają hołd: %d groszy teraz i danina co rok."), *R.Nazwa, Gr);
 		break;
@@ -1383,6 +1434,150 @@ void ARody::OdswiezWidoki()
 		if (Widoki[i])
 		{
 			Widoki[i]->Odswiez(Rody[i], PoraRodow());
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// P6 (26.11.2026): wojna z graczem i armie w marszu.
+void ARody::Wypowiedz(int32 RI, bool bWojna, const FString& Dlaczego, bool bOdGracza)
+{
+	if (!Rody.IsValidIndex(RI) || Rody[RI].bWojna == bWojna)
+	{
+		return;
+	}
+	FRod& R = Rody[RI];
+	R.bWojna = bWojna;
+	if (!bWojna)
+	{
+		R.GroziGraczowi = 0;
+		ArmieL.RemoveAll([RI](const FArmia& A) { return A.Rod == RI && A.Cel < 0; }); // armia na gracza zawraca
+	}
+	Baner = bWojna ? (bOdGracza ? FString::Printf(TEXT("Wypowiadacie wojnę rodowi %s"), *R.Nazwa)
+		: FString::Printf(TEXT("%s wypowiadają wam wojnę!"), *R.Nazwa))
+		: FString::Printf(TEXT("Pokój z rodem %s"), *R.Nazwa);
+	BanerDo = (GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0) + 9.0;
+	Ogloszenie(Baner + (Dlaczego.IsEmpty() ? FString() : TEXT(" ") + Dlaczego));
+	Dziennik(R, FString::Printf(TEXT("WOJNA Z GRACZEM: %s"), bWojna ? TEXT("tak") : TEXT("pokój")));
+}
+
+int32 ARody::CenaPokoju(int32 RI) const
+{
+	return Rody.IsValidIndex(RI) ? 30 + 2 * Rody[RI].Rodzin : 0;
+}
+
+bool ARody::ZawrzyjPokoj(int32 RI, FString& Powod)
+{
+	if (!Rody.IsValidIndex(RI) || !Rody[RI].bWojna)
+	{
+		Powod = TEXT("Nie ma wojny z tym rodem.");
+		return false;
+	}
+	const int32 Cena = CenaPokoju(RI);
+	if (!Osada.IsValid() || Osada->Grosze < Cena)
+	{
+		Powod = FString::Printf(TEXT("Pokój kosztuje %d groszy."), Cena);
+		return false;
+	}
+	FRod& R = Rody[RI];
+	Osada->Grosze -= Cena;
+	R.Grosze += Cena;
+	R.Stosunek = FMath::Max(R.Stosunek, -15.f);
+	R.bWrogi = false;
+	Wypowiedz(RI, false, FString::Printf(TEXT("Zapłaciliście %d groszy."), Cena));
+	Powod = FString::Printf(TEXT("%s przyjęli %d groszy i zawarli pokój."), *R.Nazwa, Cena);
+	return true;
+}
+
+void ARody::NapadLiczbami(int32 I)
+{
+	FRod& R = Rody[I];
+	if (!Osada.IsValid())
+	{
+		return;
+	}
+	const int32 SG = SilaGracza();
+	int32 Gr = 0;
+	if (R.Sila() * Los.FRandRange(0.85f, 1.15f) > SG * 1.2f)
+	{
+		const FSurowce Lup = Osada->Grabiez(0.25f, Gr);
+		for (ESurowiec S : WszystkieSurowce) { R.Zapas[S] += Lup[S]; }
+		R.Grosze += Gr;
+		Ogloszenie(FString::Printf(TEXT("%s napadli na osadę i zabrali łup (%d groszy)"), *R.Nazwa, Gr));
+	}
+	else
+	{
+		R.Woje -= R.Woje / 2;
+		Ogloszenie(FString::Printf(TEXT("%s napadli na osadę, ale wasza siła ich odparła"), *R.Nazwa));
+	}
+	R.Stosunek = FMath::Max(-100.f, R.Stosunek - 20.f);
+}
+
+void ARody::PoNapadzieNaGracza(int32 RI, bool bZLupem, const FSurowce& Lup, int32 Gr, int32 Poleglo, float Skala)
+{
+	if (!Rody.IsValidIndex(RI))
+	{
+		return;
+	}
+	FRod& R = Rody[RI];
+	const int32 Straty = FMath::RoundToInt32(Poleglo * FMath::Max(1.f, Skala));
+	const int32 Wojow = FMath::Min(R.Woje, Straty);
+	R.Woje -= Wojow;
+	R.Rodzin = FMath::Max(2, R.Rodzin - (Straty - Wojow) / 3);
+	if (bZLupem)
+	{
+		for (ESurowiec S : WszystkieSurowce) { R.Zapas[S] += Lup[S]; }
+		R.Grosze += Gr;
+	}
+	R.Stosunek = FMath::Max(-100.f, R.Stosunek - 20.f);
+	++R.Napadow;
+	Dziennik(R, FString::Printf(TEXT("NAPAD NA GRACZA: %s, poległo %d"), bZLupem ? TEXT("z łupem") : TEXT("odparty"), Straty));
+}
+
+void ARody::ArmieTick(float Dt)
+{
+	for (int32 k = ArmieL.Num() - 1; k >= 0; --k)
+	{
+		FArmia& A = ArmieL[k];
+		if (!Rody.IsValidIndex(A.Rod))
+		{
+			ArmieL.RemoveAt(k);
+			continue;
+		}
+		A.Czas += Dt;
+		if (A.Czas < A.Caly)
+		{
+			continue;
+		}
+		const int32 I = A.Rod;
+		if (A.Cel >= 0)
+		{
+			const int32 Cel = A.Cel;
+			ArmieL.RemoveAt(k);
+			if (Rody.IsValidIndex(Cel))
+			{
+				Bitwa(I, Cel);
+			}
+			continue;
+		}
+		// Pod osada gracza: prawdziwa bitwa, gdy gracz patrzy na mape grywalna; inaczej czeka do 90 s, potem liczby.
+		ABitwa* B = nullptr;
+		for (TActorIterator<ABitwa> It(GetWorld()); It; ++It) { B = *It; break; }
+		if (B && B->WRegionie() && B->NapadRodu(I, A.Woje, A.Chlopi, A.Skad))
+		{
+			ArmieL.RemoveAt(k);
+			continue;
+		}
+		if (!A.bCzeka)
+		{
+			A.bCzeka = true;
+			Ogloszenie(FString::Printf(TEXT("%s stoją pod waszą osadą!"), *Rody[I].Nazwa));
+		}
+		A.Czeka += Dt;
+		if (A.Czeka > 90.f)
+		{
+			ArmieL.RemoveAt(k);
+			NapadLiczbami(I);
 		}
 	}
 }

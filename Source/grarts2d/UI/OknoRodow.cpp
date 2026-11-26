@@ -1,6 +1,7 @@
 // Plik: Source/grarts2d/UI/OknoRodow.cpp
 #include "UI/OknoRodow.h"
 #include "UI/StylUI.h"
+#include "UI/Herb.h"
 #include "Osada/Rody.h"
 #include "Osada/Osada.h"
 #include "Budowy/Budowa.h"
@@ -285,7 +286,7 @@ TSharedRef<SWidget> SOknoRodow::WierszRodu(int32 I)
 						.Text_Lambda([this, I]()
 						{
 							const FRod* R = Rod(I);
-							const TCHAR* T = !R ? TEXT("") : (R->ZadaDaniny > 0 ? TEXT("żąda daniny!") : (R->bWrogi ? TEXT("grozi wojną") : (R->bLennik ? TEXT("wasz lennik") : TEXT(""))));
+							const TCHAR* T = !R ? TEXT("") : (R->bWojna ? TEXT("WOJNA z wami") : (R->ZadaDaniny > 0 ? TEXT("żąda daniny!") : (R->bWrogi ? TEXT("grozi wojną") : (R->bLennik ? TEXT("wasz lennik") : TEXT("")))));
 							return FText::FromString(T);
 						})
 						.Font(Czcionka(9, true))
@@ -446,6 +447,19 @@ TSharedRef<SWidget> SOknoRodow::Dyplomacja()
 							NaZamknij.ExecuteIfBound(); // okno zamkniete: widac pole pod brama
 						}
 					})
+			]
+			// P6: pokoj za grosze, gdy rod jest w wojnie z wami.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.f, 0.f, 0.f, 0.f)
+			[
+				Guzik(FText::FromString(TEXT("Zawrzyj pokój")),
+					[this]() { const FRod* R = Rod(); return R && R->bWojna; },
+					[this]()
+					{
+						const FRod* R = Rod();
+						return R && R->bWojna ? FText::FromString(FString::Printf(TEXT("Kończy wojnę za %d groszy; ich armia idąca na was zawraca."), RodyW->CenaPokoju(Wybrany)))
+							: FText::FromString(TEXT("Nie ma wojny z tym rodem."));
+					},
+					[this]() { FString P; const bool b = RodyW.IsValid() && RodyW->ZawrzyjPokoj(Wybrany, P); Wynik(b, P); })
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(8.f, 0.f, 0.f, 0.f)
 			[
@@ -647,7 +661,7 @@ int32 SZnakiRodow::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 	const float Skala = FMath::Max(0.01f, AllottedGeometry.Scale);
 	const FSlateFontInfo Gruba = FCoreStyle::GetDefaultFontStyle("Bold", 11);
 	const FSlateFontInfo Cienka = FCoreStyle::GetDefaultFontStyle("Regular", 9);
-	auto Rysuj = [&](FVector2D Gdzie, FLinearColor Kolor, const FString& Nazwa, const FString& Opis, FLinearColor KolorOpisu)
+	auto Rysuj = [&](FVector2D Gdzie, FLinearColor Kolor, const FString& Nazwa, const FString& Opis, FLinearColor KolorOpisu, const FHerb& Herb)
 	{
 		FVector2D Px;
 		if (!PC->ProjectWorldLocationToScreen(FVector(Gdzie.X, Gdzie.Y, 0.0), Px, false))
@@ -662,8 +676,7 @@ int32 SZnakiRodow::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		// Drzewce i choragiew w barwie rodu, obok nazwa na ciemnym tle.
 		FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(FVector2f(2.f, 22.f), FSlateLayoutTransform(P + FVector2f(-1.f, -22.f))),
 			&Tlo, ESlateDrawEffect::None, FLinearColor(0.f, 0.f, 0.f, 1.f));
-		FSlateDrawElement::MakeBox(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(FVector2f(16.f, 11.f), FSlateLayoutTransform(P + FVector2f(1.f, -22.f))),
-			&Znak, ESlateDrawEffect::None, Kolor);
+		Herb.Rysuj(OutDrawElements, LayerId + 1, AllottedGeometry, P + FVector2f(1.f, -23.f), 13.f); // P6: herb rodu zamiast plachty
 		const FVector2f T = P + FVector2f(20.f, -26.f);
 		FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(FVector2f(8.f * Nazwa.Len() + 16.f, 32.f), FSlateLayoutTransform(T - FVector2f(4.f, 1.f))),
 			&Tlo, ESlateDrawEffect::None, FLinearColor::White);
@@ -674,23 +687,14 @@ int32 SZnakiRodow::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 	};
 	if (OsadaW.IsValid() && OsadaW->MaOboz())
 	{
-		Rysuj(OsadaW->Oboz(), StylUI::Zloto, TEXT("Wasza osada"), FString::Printf(TEXT("%s, siła %d"), NazwaPoziomu(A->PoziomGracza()), A->SilaGracza()), StylUI::Zloto);
+		Rysuj(OsadaW->Oboz(), StylUI::Zloto, TEXT("Wasza osada"), FString::Printf(TEXT("%s, siła %d"), NazwaPoziomu(A->PoziomGracza()), A->SilaGracza()), StylUI::Zloto, FHerb::Gracza());
 	}
 	for (const FRod& R : A->Lista())
 	{
-		const FLinearColor K = R.ZadaDaniny > 0 || R.bWrogi ? StylUI::Czerwony : (R.bLennik ? StylUI::Zloto : StylUI::Szary);
-		Rysuj(R.Gdzie, R.Barwa, R.Nazwa, FString::Printf(TEXT("%s, %s"), NazwaPoziomu(R.Poziom), ARody::OpisStosunku(R.Stosunek)), K);
+		const FLinearColor K = R.bWojna || R.ZadaDaniny > 0 || R.bWrogi ? StylUI::Czerwony : (R.bLennik ? StylUI::Zloto : StylUI::Szary);
+		Rysuj(R.Gdzie, R.Barwa, R.Nazwa, R.bWojna ? FString::Printf(TEXT("%s, WOJNA z wami"), NazwaPoziomu(R.Poziom))
+			: FString::Printf(TEXT("%s, %s"), NazwaPoziomu(R.Poziom), ARody::OpisStosunku(R.Stosunek)), K, FHerb::Rodu(R.Nazwa, R.Barwa));
 	}
-	// Wyprawa w drodze: choragiew kolumny przesuwa sie po mapie.
-	for (TActorIterator<ABitwa> It(W); It; ++It)
-	{
-		FVector2D G;
-		float Postep;
-		bool bPowrot;
-		if (It->MarszWyprawy(G, Postep, bPowrot))
-		{
-			Rysuj(G, StylUI::Czerwony, bPowrot ? TEXT("Wyprawa wraca") : TEXT("Wyprawa"), FString::Printf(TEXT("%.0f%% drogi"), Postep * 100.f), StylUI::Zloto);
-		}
-	}
+	// Wyprawy i armie w marszu rysuje SZnakiArmii (UI/ZnakiArmii, P6) na obu mapach.
 	return LayerId + 2;
 }

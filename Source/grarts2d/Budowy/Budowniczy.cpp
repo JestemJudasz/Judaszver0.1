@@ -38,6 +38,10 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Gra/ZapisGry.h"
+#include "UI/ZnakiArmii.h"
+#include "UI/Herb.h"
+#include "Osada/OsadaRodu.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "ProceduralMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -168,6 +172,15 @@ void ABudowniczy::ZrobInterfejs()
 			.Visibility_Lambda([this]() { return (!bWidoczne && Rody && Rody->Zalozone()) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
 			[
 				SNew(SZnakiRodow).Rody(Rody.Get()).Osada(Osada.Get())
+			]
+		]
+		// P6: armie w marszu z herbami (obie mapy) i baner wojny.
+		+ SOverlay::Slot()
+		[
+			SNew(SBox)
+			.Visibility_Lambda([this]() { return (Rody && Rody->Zalozone()) ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+			[
+				SNew(SZnakiArmii).Rody(Rody.Get())
 			]
 		]
 		// Podpowiedz klawiszy: lewy dolny rog.
@@ -337,7 +350,7 @@ void ABudowniczy::ZrobInterfejs()
 		.Padding(16.f, 70.f, 16.f, 16.f)
 		[
 			SAssignNew(MiejsceOkna, SBox)
-			.Visibility_Lambda([this]() { return (bWidoczne && Okno.IsValid()) ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
+			.Visibility_Lambda([this]() { return (bWidoczne && (Okno.IsValid() || WrogaOsada.IsValid())) ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed; })
 		];
 	GEngine->GameViewport->AddViewportWidgetContent(Nakladka.ToSharedRef(), 50);
 	UstawPomoc();
@@ -521,6 +534,7 @@ void ABudowniczy::OtworzOkno(ABudowa* B)
 	{
 		return;
 	}
+	WrogaOsada.Reset();
 	TArray<UTexture2D*> Sur;
 	for (const TObjectPtr<UTexture2D>& T : IkonySurowcow)
 	{
@@ -543,6 +557,110 @@ void ABudowniczy::ZamknijOkno()
 		MiejsceOkna->SetContent(SNullWidget::NullWidget);
 	}
 	Okno.Reset();
+	WrogaOsada.Reset();
+}
+
+bool ABudowniczy::OtworzWrogi(FVector2D P)
+{
+	if (!Rody || !MiejsceOkna.IsValid())
+	{
+		return false;
+	}
+	for (int32 r = 0; r < Rody->Lista().Num(); ++r)
+	{
+		AOsadaRodu* V = Rody->Widok(r);
+		if (!V || FVector2D::Distance(P, Rody->Lista()[r].Gdzie) > 40000.0)
+		{
+			continue;
+		}
+		const int32 Br = V->BramaPod(P);
+		const int32 Dz = Br >= 0 ? -1 : V->DzialkaPod(P);
+		if (Br < 0 && Dz < 0)
+		{
+			continue;
+		}
+		ZamknijOkno();
+		WrogaOsada = V;
+		WrogiRod = r;
+		WrogaDzialka = Dz;
+		WrogaBrama = Br;
+		static FSlateRoundedBoxBrush TloW(StylUI::Tlo, 6.f, StylUI::Ramka, 1.f);
+		const FRod& R = Rody->Lista()[r];
+		TWeakObjectPtr<AOsadaRodu> Vw = V;
+		TWeakObjectPtr<ARody> Rw = Rody.Get();
+		// Zycie 0..1 i opis (odswiezane co klatke: plonacy budynek traci zycie na oczach).
+		auto Zycie = [Vw, Br, Dz]() -> float
+		{
+			const AOsadaRodu* X = Vw.Get();
+			if (!X) { return 0.f; }
+			if (Br >= 0) { return X->Bramy().IsValidIndex(Br) ? FMath::Clamp(X->Bramy()[Br].Punkty / FMath::Max(1.f, X->Bramy()[Br].Max), 0.f, 1.f) : 0.f; }
+			return X->ZycieDzialki(Dz);
+		};
+		const FRodzajBudynku* Rd = Dz >= 0 ? V->RodzajDzialki(Dz) : nullptr;
+		const FString Nazwa = Br >= 0 ? (R.Mury >= 2 ? FString(TEXT("Brama murowana")) : FString(TEXT("Brama palisady"))) : (Rd ? Rd->Nazwa : FString(TEXT("Budynek")));
+		const int32 Poz = Br >= 0 ? FMath::Max(1, R.Mury) : (Rd ? FMath::Max(1, Rd->Poziom) : 1);
+		MiejsceOkna->SetContent(
+			SNew(SBorder).BorderImage(&TloW).Padding(FMargin(12.f, 8.f))
+			[
+				SNew(SBox).WidthOverride(290.f)
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Bold", 13)).ColorAndOpacity(StylUI::Zloto)
+						.Text(FText::FromString(Nazwa))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
+					[
+						SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 10)).ColorAndOpacity(StylUI::Napis)
+						.Text_Lambda([Rw, r, Poz]()
+						{
+							const ARody* A = Rw.Get();
+							if (!A || !A->Lista().IsValidIndex(r)) { return FText::GetEmpty(); }
+							const FRod& X = A->Lista()[r];
+							return FText::FromString(FString::Printf(TEXT("Ród %s (%s) · poziom %d\n%s"), *X.Nazwa, NazwaPoziomu(X.Poziom), Poz,
+								X.bWojna ? TEXT("W wojnie z wami") : ARody::OpisStosunku(X.Stosunek)));
+						})
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 2.f)
+					[
+						SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Bold", 10)).ColorAndOpacity(StylUI::Napis)
+						.Text_Lambda([Vw, Br, Dz, Zycie]()
+						{
+							const AOsadaRodu* X = Vw.Get();
+							if (!X) { return FText::GetEmpty(); }
+							if (Br >= 0 && X->Bramy().IsValidIndex(Br))
+							{
+								const AOsadaRodu::FBrama& B = X->Bramy()[Br];
+								return FText::FromString(B.Punkty <= 0.f ? FString(TEXT("Życie: rozbita - można wejść"))
+									: FString::Printf(TEXT("Życie: %.0f / %.0f"), B.Punkty, B.Max));
+							}
+							const float Z = Zycie();
+							return FText::FromString(FString::Printf(TEXT("Życie: %d%%%s"), FMath::RoundToInt32(Z * 100.f),
+								Z <= 0.f ? TEXT(" - zgliszcza") : (X->PlonieDzialka(Dz) ? TEXT(" - płonie!") : TEXT(""))));
+						})
+					]
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(SBox).HeightOverride(10.f)
+						[
+							SNew(SProgressBar)
+							.Percent_Lambda([Zycie]() { return TOptional<float>(Zycie()); })
+							.FillColorAndOpacity_Lambda([Zycie]() { return FSlateColor(FMath::Lerp(FLinearColor(0.85f, 0.15f, 0.1f), FLinearColor(0.35f, 0.7f, 0.25f), Zycie())); })
+						]
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
+					[
+						SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 9)).ColorAndOpacity(StylUI::Szary).AutoWrapText(true)
+						.Text(FText::FromString(Br >= 0
+							? TEXT("Bramę rąbią wasi woje: wybierzcie oddział i prawy klik w obrońców za murem (wyprawa wojenna, okno rodów H).")
+							: TEXT("Podpalić: wybierzcie oddział i prawy klik w budynek (przy rozbitej bramie albo poza murem).")))
+					]
+				]
+			]);
+		return true;
+	}
+	return false;
 }
 
 void ABudowniczy::OtworzRody(int32 IndeksRodu)
@@ -2273,10 +2391,15 @@ void ABudowniczy::Tick(float DeltaSeconds)
 			// Klik w budynek: okno budynku; w trawe (puste pole): zamyka wszystkie okna i karty budowy (jak w Manor Lords).
 			// Klik idzie dalej do ABitwa (zaznaczanie oddzialow w polu).
 			FVector P;
-			ABudowa* B = TerenPodKursorem(PC, P) ? Osada->BudynekPod(FVector2D(P)) : nullptr;
+			const bool bTeren = TerenPodKursorem(PC, P);
+			ABudowa* B = bTeren ? Osada->BudynekPod(FVector2D(P)) : nullptr;
 			if (B)
 			{
 				OtworzOkno(B);
+			}
+			else if (bTeren && OtworzWrogi(FVector2D(P)))
+			{
+				// okienko wrogiego budynku (P6)
 			}
 			else
 			{
