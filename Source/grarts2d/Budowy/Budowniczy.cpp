@@ -1589,7 +1589,7 @@ void ABudowniczy::Stawianie(APlayerController* PC)
 		FVector2D G;
 		float ObrotDrogi = Obrot;
 		if (Drogi && !PC->IsInputKeyDown(EKeys::LeftAlt) && !PC->IsInputKeyDown(EKeys::RightAlt)
-			&& Drogi->Przyciagnij(FVector2D(P), Wybrany->Polowa.Y, G, ObrotDrogi))
+			&& Drogi->Przyciagnij(FVector2D(P), FMath::Max(Wybrany->Polowa.Y, float(Wybrany->NajwyzszyPoziom().Obrys().Max.Y)), G, ObrotDrogi))
 		{
 			P = FVector(G, P.Z);
 			Obrot = ObrotDrogi;
@@ -2501,7 +2501,7 @@ void ABudowniczy::PokazDrog(FVector2D Srodek)
 		const FVector2D Przy = Pkt[1 + (k / 2) * 3] + FVector2D(0.f, (k % 2 ? 1.f : -1.f) * 1500.f);
 		FVector2D G;
 		float Ob = 0.f, Z = 0.f;
-		if (Drogi->Przyciagnij(Przy, R.Polowa.Y, G, Ob) && MoznaPostawic(R, G, Ob, Z))
+		if (Drogi->Przyciagnij(Przy, FMath::Max(R.Polowa.Y, float(R.NajwyzszyPoziom().Obrys().Max.Y)), G, Ob) && MoznaPostawic(R, G, Ob, Z))
 		{
 			if (ABudowa* B = Osada->Postaw(R, G, Ob, Z))
 			{
